@@ -11,6 +11,9 @@ __pycache__/
 **/predict/
 **/train*.jpg
 **/val*.jpg
+**/results
+**/yolo*.pt
+
 
 # Ignore files 
 **/*ignore*.*
