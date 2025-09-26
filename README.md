@@ -15,3 +15,18 @@ This project aims to assist companies in quickly and accurately assessing vehicl
 ## Status
 
 Currently under active development as part of a bachelor thesis.
+
+## Datasets
+
+### CarDD
+Dataset used for models predicting car damage types - dataset fitted into the project's needs and requirements.
+
+Link: https://cardd-ustc.github.io/
+
+> **CarDD**  
+> Wang, Xinkuang; Li, Wenjing; Wu, Zhongcheng.  
+> "CarDD: A New Dataset for Vision-Based Car Damage Detection."  
+> *IEEE Transactions on Intelligent Transportation Systems*, vol. 24, no. 7, 2023, pp. 7202–7214.  
+> [https://doi.org/10.1109/TITS.2023.3258480](https://doi.org/10.1109/TITS.2023.3258480)
+
+
