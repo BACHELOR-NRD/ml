@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "ml-carbucks"
+version = "0.1.0"
+description = ""
+authors = ["damian.trafiale@gmail.com", "ricardo_Fernandes21@hotmail.com", "nuralh777@gmail.com"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.14"
+ultralytics = "^8.3.203"
+torch = "^2.8.0"
+torchvision = "^0.23.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

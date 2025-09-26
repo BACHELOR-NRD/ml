@@ -1,0 +1,15 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+.venv/
+
+# YOLO run files
+*/**/runs/
+*/**/weights/
+*/**/predictions/
+*/**/predict/
+*/**/train*.jpg
+*/**/val*.jpg
+
+# Other 
+*/**/*ignore*.*
+*/**/ignore/
