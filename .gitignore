@@ -2,14 +2,21 @@
 __pycache__/
 .venv/
 
-# YOLO run files
-*/**/runs/
-*/**/weights/
-*/**/predictions/
-*/**/predict/
-*/**/train*.jpg
-*/**/val*.jpg
 
-# Other 
-*/**/*ignore*.*
-*/**/ignore/
+
+# YOLO run files
+**/runs/
+**/weights/
+**/predictions/
+**/predict/
+**/train*.jpg
+**/val*.jpg
+
+# Ignore files 
+**/*ignore*.*
+**/ignore/
+
+
+# Data files
+**/data
+
