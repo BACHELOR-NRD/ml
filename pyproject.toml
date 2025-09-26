@@ -2,7 +2,11 @@
 name = "ml-carbucks"
 version = "0.1.0"
 description = ""
-authors = ["damian.trafiale@gmail.com", "ricardo_Fernandes21@hotmail.com", "nuralh777@gmail.com"]
+authors = [
+    "Damian Trafiale <damian.trafiale@gmail.com>",
+    "Ricardo Fernandes <ricardo_Fernandes21@hotmail.com>",
+    "Nural Hassan <nuralh777@gmail.com>"
+]
 readme = "README.md"
 
 [tool.poetry.dependencies]
