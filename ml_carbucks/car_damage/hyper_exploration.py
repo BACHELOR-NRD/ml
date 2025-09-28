@@ -44,10 +44,9 @@ def create_objective(
 ) -> Callable:
 
     def objective(trial: Trial) -> float:
-        params = get_trial_params(trial)
         model = YOLO(version)
-
         try:
+            params = get_trial_params(trial)
             results = model.train(
                 pretrained=True,
                 seed=42,
@@ -57,14 +56,16 @@ def create_objective(
                 verbose=False,
                 **params,
                 save=False,
+                project=None,
             )
 
             trial.set_user_attr("params", params)
             trial.set_user_attr("results", results.results_dict)
+            fitness = results.fitness
 
-            return results.fitness[
-                0
-            ]  # Return the primary fitness metric (e.g., mAP@50-95)
+            del results
+
+            return fitness
 
         except optuna.exceptions.TrialPruned as e:
             print("Trial pruned")  # NOTE: this should be replace to logger
@@ -72,6 +73,8 @@ def create_objective(
         except Exception as e:
             print(f"Error in objective: {e}")
             raise e
+        finally:
+            del model
 
     return objective
 
