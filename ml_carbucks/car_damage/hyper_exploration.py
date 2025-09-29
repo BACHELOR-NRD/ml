@@ -1,4 +1,4 @@
-import datetime as dt
+import datetime as dt  # noqa: F401
 from pathlib import Path
 from typing import Any, Callable, Dict, Union
 
@@ -13,19 +13,21 @@ from ml_carbucks import (
 )
 
 
-RUN_NAME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+RUN_NAME = dt.datetime.now().strftime("%Y%m%d_%H%M%S") + "_v2"
 
 
 def get_trial_params(trial: Trial) -> Dict[str, Any]:
-    epochs = trial.suggest_int("epochs", 10, 75)
+    epochs = trial.suggest_int("epochs", 30, 150)
     batch = trial.suggest_categorical("batch", [8, 16, 32, 64])
-    # imgsz = trial.suggest_categorical("imgsz", [320, 640, 960])
     lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
-    momentum = trial.suggest_float("momentum", 0.5, 0.99)
+    momentum = trial.suggest_float("momentum", 0.3, 0.99)
     weight_decay = trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True)
-    patience = trial.suggest_int("patience", 25, 50)
+    patience = trial.suggest_int("patience", 25, 75)
 
+    # imgsz = trial.suggest_categorical("imgsz", [320, 640, 960])
+    optimizer = trial.suggest_categorical("optimizer", ["AdamW", "NAG"])
     return {
+        "optimizer": optimizer,
         "epochs": epochs,
         "batch": batch,
         "imgsz": 320,
@@ -41,6 +43,7 @@ def create_objective(
     data: Path,
     name: str,
     device: str,
+    results_dir: Path,
 ) -> Callable:
 
     def objective(trial: Trial) -> float:
@@ -54,9 +57,9 @@ def create_objective(
                 name=name,
                 device=device,
                 verbose=False,
+                project=str(results_dir),
                 **params,
                 save=False,
-                project=None,
             )
 
             trial.set_user_attr("params", params)
@@ -104,6 +107,7 @@ def execute_study(
             data=data,
             name=name,
             device=device,
+            results_dir=results_dir,
         ),
         n_trials=n_trials,
         gc_after_trial=True,
@@ -111,6 +115,6 @@ def execute_study(
 
 
 # NOTE: This is how to execute hyperparameter optimization, but it takes a lot of time, so I commented it out for now
-execute_study(name=f"{RUN_NAME}_optuna")
+execute_study(name=f"{RUN_NAME}_optuna", n_trials=200)
 
-# NOTE: to view optuna execute in terminal: optuna dashboard sqlite:///{sql_path}
+# NOTE: to view optuna dashboard in terminal: optuna dashboard sqlite:///{sql_path}
