@@ -13,7 +13,16 @@ from ml_carbucks import (
 )
 
 
-def get_trial_params(trial: Trial) -> Dict[str, Any]:
+def get_trial_params(trial: Trial, version: int) -> Dict[str, Any]:
+    if version == 1:
+        return get_params_hyper(trial)
+    elif version == 2:
+        return get_params_augmentation(trial)
+    else:
+        raise ValueError(f"Unsupported version: {version}")
+
+
+def get_params_hyper(trial: Trial) -> Dict[str, Any]:
     epochs = trial.suggest_int("epochs", 30, 150)
     batch = trial.suggest_categorical("batch", [8, 16, 32, 64])
     lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
@@ -25,7 +34,6 @@ def get_trial_params(trial: Trial) -> Dict[str, Any]:
     opt = trial.suggest_categorical("optimizer", ["AdamW", "NAdam"])
 
     return {
-        "imgsz": 320,
         "optimizer": opt,
         "epochs": epochs,
         "batch": batch,
@@ -36,7 +44,7 @@ def get_trial_params(trial: Trial) -> Dict[str, Any]:
     }
 
 
-def get_trial_params_augumentation(trial: Trial) -> Dict[str, Any]:
+def get_params_augmentation(trial: Trial) -> Dict[str, Any]:
     hsv_h = trial.suggest_float("hsv_h", 0.0, 0.1)
     hsv_s = trial.suggest_float("hsv_s", 0.0, 1.0)
     hsv_v = trial.suggest_float("hsv_v", 0.0, 1.0)
@@ -49,8 +57,6 @@ def get_trial_params_augumentation(trial: Trial) -> Dict[str, Any]:
     mixup = trial.suggest_float("mixup", 0.0, 1.0)
 
     return {
-        "imgsz": 320,
-        "epochs": 75,
         "hsv_h": hsv_h,
         "hsv_s": hsv_s,
         "hsv_v": hsv_v,
@@ -70,18 +76,16 @@ def create_objective(
     name: str,
     device: str,
     results_dir: Path,
+    params_version: int,
+    override_params: Dict[str, Any] = {},
 ) -> Callable:
 
     def objective(trial: Trial) -> float:
         model = YOLO(version)
         try:
-            if "augumentation" in name.lower():
-                params = get_trial_params_augumentation(trial)
-            else:
-                raise Exception(
-                    "Implemented but for this specific run I just want to be sure that augumentation will run"
-                )
-                params = get_trial_params(trial)
+            params = get_trial_params(trial, version=params_version)
+
+            params.update(override_params)
 
             results = model.train(
                 pretrained=True,
@@ -124,6 +128,8 @@ def execute_study(
     data: Path = DATA_CAR_DD_YAML,
     direction: str = "maximize",
     device: str = "0",
+    params_version: int = 1,
+    override_params: Dict[str, Any] = {},
 ):
 
     sql_path = results_dir / f"{name}.db"
@@ -142,15 +148,31 @@ def execute_study(
             name=name,
             device=device,
             results_dir=results_dir,
+            params_version=params_version,
+            override_params=override_params,
         ),
         n_trials=n_trials,
         gc_after_trial=True,
     )
 
 
-# NOTE: This is how to execute hyperparameter optimization, but it takes a lot of time, so I commented it out for now
 # RUN_NAME = dt.datetime.now().strftime("%Y%m%d_%H%M%S") + "_v2"
-RUN_NAME = "20250930_augumentation_parameters"
-execute_study(name=f"{RUN_NAME}_optuna", n_trials=200)
+RUN_NAME = "20251001_augmentation_parameters"
+override_params = {
+    "imgsz": 320,
+    "optimizer": "AdamW",
+    "epochs": 131,
+    "batch": 8,
+    "lr0": 0.00029631881419241645,
+    "momentum": 0.38243835004885135,
+    "weight_decay": 9.16499123351809e-05,
+    "patience": 31,
+}
+execute_study(
+    name=f"{RUN_NAME}_optuna",
+    n_trials=200,
+    params_version=2,
+    override_params=override_params,
+)
 
 # NOTE: to view optuna dashboard in terminal: optuna dashboard sqlite:///{sql_path}
