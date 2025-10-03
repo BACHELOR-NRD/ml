@@ -4,7 +4,7 @@ __pycache__/
 
 
 
-# YOLO run files
+# MOdel run files
 **/runs/
 **/weights/
 **/predictions/
@@ -13,6 +13,7 @@ __pycache__/
 **/val*.jpg
 **/results
 **/yolo*.pt
+**/outputs/
 
 
 # Ignore files 
