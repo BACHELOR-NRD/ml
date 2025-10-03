@@ -85,6 +85,9 @@ def create_objective(
         try:
             params = get_trial_params(trial, version=params_version)
 
+            if any(param in params for param in override_params):
+                raise ValueError("Override params conflict with trial params")
+
             params.update(override_params)
 
             results = model.train(
