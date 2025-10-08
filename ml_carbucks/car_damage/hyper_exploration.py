@@ -5,8 +5,10 @@ from typing import Any, Callable, Dict, Union
 from ultralytics import YOLO
 from optuna import Trial
 import optuna
+import cloudpickle as cpkl
 
-from ml_carbucks import (
+from ml_carbucks import (  # noqa: F401
+    YOLO_PRETRAINED_11L,
     YOLO_PRETRAINED_11N,
     DATA_CAR_DD_YAML,
     RESULTS_DIR,
@@ -133,7 +135,27 @@ def execute_study(
     device: str = "0",
     params_version: int = 1,
     override_params: Dict[str, Any] = {},
+    enqueue_trials: list = [],
 ):
+    """Execute an Optuna study to optimize YOLO training parameters
+
+    Args:
+        name (str): Name of the study
+        n_trials (int, optional): Number of trials to run. Defaults to 25.
+        results_dir (Path, optional): Directory to store results. Defaults to RESULTS_DIR.
+        version (Union[Path, str], optional): YOLO model version or path. Defaults to YOLO_PRETRAINED_11N.
+        data (Path, optional): Path to data YAML file. Defaults to DATA_CAR_D
+        direction (str, optional): Direction of optimization ('minimize' or 'maximize'). Defaults to 'maximize'.
+        device (str, optional): Device to use (e.g., '0' for GPU
+        params_version (int, optional): Version of parameter set to optimize. Defaults to 1.
+        override_params (Dict[str, Any], optional): Parameters to override in each trial. Defaults to {}.
+        enqueue_trials (list, optional): List of parameter dicts to enqueue as trials. It is used to add specific (manually defined) trials into the study. Useful if you want to test specific configurations or add default values. Defaults to [].
+
+    Raises:
+        ValueError: If an unsupported version is provided.
+        TypeError: If an invalid type is provided for any parameter.
+
+    """
 
     sql_path = results_dir / f"{name}.db"
 
@@ -143,6 +165,13 @@ def execute_study(
         load_if_exists=True,
         storage=f"sqlite:///{sql_path}",
     )
+
+    for trial_params in enqueue_trials:
+        # NOTE: Enqueue trials with specific parameters
+        # check if trial with same params exists
+        existing_trials = [t for t in study.trials if t.params == trial_params]
+        if not existing_trials:
+            study.enqueue_trial(trial_params)
 
     study.optimize(
         func=create_objective(
@@ -160,22 +189,96 @@ def execute_study(
 
 
 # RUN_NAME = dt.datetime.now().strftime("%Y%m%d_%H%M%S") + "_v2"
-RUN_NAME = "20251001_augmentation_parameters"
-override_params = {
-    "imgsz": 320,
-    "optimizer": "AdamW",
-    "epochs": 131,
-    "batch": 8,
-    "lr0": 0.00029631881419241645,
-    "momentum": 0.38243835004885135,
-    "weight_decay": 9.16499123351809e-05,
-    "patience": 31,
-}
-execute_study(
-    name=f"{RUN_NAME}_optuna",
-    n_trials=200,
-    params_version=2,
-    override_params=override_params,
+# RUN_NAME = "20251001_augmentation_parameters"
+# override_params = {
+#     "imgsz": 320,
+#     "optimizer": "AdamW",
+#     "epochs": 131,
+#     "batch": 8,
+#     "lr0": 0.00029631881419241645,
+#     "momentum": 0.38243835004885135,
+#     "weight_decay": 9.16499123351809e-05,
+#     "patience": 31,
+# }
+# execute_study(
+#     name=f"{RUN_NAME}_optuna",
+#     n_trials=200,
+#     params_version=2,
+#     override_params=override_params,
+#     enqueue_trials=[
+#         {
+#             "hsv_h": 0.015,
+#             "hsv_s": 0.7,
+#             "hsv_v": 0.4,
+#             "degrees": 0.0,
+#             "translate": 0.1,
+#             "scale": 0.5,
+#             "shear": 0.0,
+#             "fliplr": 0.5,
+#             "mosaic": 1.0,
+#             "mixup": 0.0,
+#         }
+#     ],
+# )
+
+
+def train_model(
+    name: str,
+    params: Dict[str, Any],
+    version: str,
+    data: Union[Path, str] = DATA_CAR_DD_YAML,
+    results_dir: Path = RESULTS_DIR,
+    device: str = "0",
+    resume: bool = False,
+) -> Any:
+    model = YOLO(version)
+    results = model.train(
+        pretrained=True,
+        seed=42,
+        data=data,
+        resume=resume,
+        name=name,
+        device=device,
+        verbose=False,
+        save=True,
+        project=str(results_dir),
+        **params,
+    )
+    return results
+
+
+TRAIN_NAME = "large_1024_hyper&augm_v1"
+final_results = train_model(
+    name=TRAIN_NAME,
+    params={
+        "imgsz": 1024,
+        "optimizer": "AdamW",
+        "epochs": 131,
+        "batch": 8,
+        "lr0": 0.00029631881419241645,
+        "momentum": 0.38243835004885135,
+        "weight_decay": 9.16499123351809e-05,
+        "patience": 31,
+        "hsv_h": 0.015,
+        "hsv_s": 0.7,
+        "hsv_v": 0.4,
+        "degrees": 0.0,
+        "translate": 0.1,
+        "scale": 0.5,
+        "shear": 0.0,
+        "fliplr": 0.5,
+        "mosaic": 1.0,
+        "mixup": 0.0,
+    },
+    version=str(
+        "/home/bachelor/ml-carbucks/results/large_1024_hyper&augm_v1/weights/last.pt"
+    ),
+    resume=True,
 )
 
+cpkl_path = RESULTS_DIR / f"{TRAIN_NAME}_results.pkl"
+with open(cpkl_path, "wb") as f:
+    cpkl.dump(final_results, f)
+
+print(f"Train results {final_results} saved to {cpkl_path}")
 # NOTE: to view optuna dashboard in terminal: optuna dashboard sqlite:///{sql_path}

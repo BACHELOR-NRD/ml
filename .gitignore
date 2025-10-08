@@ -4,7 +4,7 @@ __pycache__/
 
 
 
-# MOdel run files
+# Model run files
 **/runs/
 **/weights/
 **/predictions/
@@ -18,7 +18,7 @@ __pycache__/
 
 # Ignore files 
 **/*ignore*.*
-**/ignore/
+**/*ignore*/
 
 
 # Data files
