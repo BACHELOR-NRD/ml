@@ -62,13 +62,13 @@ def main():
     p.add_argument(
         "--labels-dir",
         type=str,
-        default="/home/bachelor/ml-carbucks/data/carbucks/labels/picsa-m_job1",
+        default="/home/bachelor/ml-carbucks/data/carbucks/labels/pics0-9_job40",
     )
-    p.add_argument("--source", type=str, default="/home/mainnural/shared/picsa-m")
+    p.add_argument("--source", type=str, default="/home/mainnural/shared/pics0-9")
     p.add_argument(
         "--dest",
         type=str,
-        default="/home/bachelor/ml-carbucks/data/carbucks/images/pica-m_job1",
+        default="/home/bachelor/ml-carbucks/data/carbucks/images/pics0-9_job40",
     )
     p.add_argument("--dry-run", action="store_true")
     p.add_argument(
