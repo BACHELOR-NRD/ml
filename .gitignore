@@ -22,6 +22,11 @@ __pycache__/
 
 
 # Data files
-**/data/*
+**/data/**
+# !**/data/**/
 !**/data/.keep
+# !**/data/**/*.txt
+# !**/data/**/*.yml
+# !**/data/**/*.yaml
+# !**/data/**/*.json
 
