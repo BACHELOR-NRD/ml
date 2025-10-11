@@ -2,12 +2,13 @@ import datetime as dt  # noqa: F401
 from pathlib import Path
 from typing import Any, Callable, Dict, Union
 
-from ultralytics import YOLO
+from ultralytics import YOLO, RTDETR
 from optuna import Trial
 import optuna
-import cloudpickle as cpkl
+import cloudpickle as cpkl  # noqa: F401
 
 from ml_carbucks import (  # noqa: F401
+    RTDETR_PRETRAINED_L,
     YOLO_PRETRAINED_11L,
     YOLO_PRETRAINED_11N,
     DATA_CAR_DD_YAML,
@@ -26,7 +27,7 @@ def get_trial_params(trial: Trial, version: int) -> Dict[str, Any]:
 
 def get_params_hyper(trial: Trial) -> Dict[str, Any]:
     epochs = trial.suggest_int("epochs", 30, 150)
-    batch = trial.suggest_categorical("batch", [8, 16, 32, 64])
+    batch = trial.suggest_categorical("batch", [8, 16, 32])
     lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
     momentum = trial.suggest_float("momentum", 0.3, 0.99)
     weight_decay = trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True)
@@ -83,7 +84,10 @@ def create_objective(
 ) -> Callable:
 
     def objective(trial: Trial) -> float:
-        model = YOLO(version)
+        if "rtdetr" in version:
+            model = RTDETR(version)
+        else:
+            model = YOLO(version)
         try:
             params = get_trial_params(trial, version=params_version)
 
@@ -189,49 +193,32 @@ def execute_study(
 
 
 # RUN_NAME = dt.datetime.now().strftime("%Y%m%d_%H%M%S") + "_v2"
-# RUN_NAME = "20251001_augmentation_parameters"
-# override_params = {
-#     "imgsz": 320,
-#     "optimizer": "AdamW",
-#     "epochs": 131,
-#     "batch": 8,
-#     "lr0": 0.00029631881419241645,
-#     "momentum": 0.38243835004885135,
-#     "weight_decay": 9.16499123351809e-05,
-#     "patience": 31,
-# }
+# RUN_NAME = "20251011_rtdetr_initial_v1"
+
 # execute_study(
 #     name=f"{RUN_NAME}_optuna",
-#     n_trials=200,
-#     params_version=2,
-#     override_params=override_params,
-#     enqueue_trials=[
-#         {
-#             "hsv_h": 0.015,
-#             "hsv_s": 0.7,
-#             "hsv_v": 0.4,
-#             "degrees": 0.0,
-#             "translate": 0.1,
-#             "scale": 0.5,
-#             "shear": 0.0,
-#             "fliplr": 0.5,
-#             "mosaic": 1.0,
-#             "mixup": 0.0,
-#         }
-#     ],
+#     version=RTDETR_PRETRAINED_L,
+#     n_trials=100,
+#     params_version=1,
+#     override_params={
+#         "imgsz": 320,
+#     },
 # )
 
 
 def train_model(
     name: str,
     params: Dict[str, Any],
-    version: str,
+    version: Union[Path, str],
     data: Union[Path, str] = DATA_CAR_DD_YAML,
     results_dir: Path = RESULTS_DIR,
     device: str = "0",
     resume: bool = False,
 ) -> Any:
-    model = YOLO(version)
+    if "rtdetr" in str(version):
+        model = RTDETR(version)
+    else:
+        model = YOLO(version)
     results = model.train(
         pretrained=True,
         seed=42,
@@ -247,38 +234,57 @@ def train_model(
     return results
 
 
-TRAIN_NAME = "large_1024_hyper&augm_v1"
-final_results = train_model(
-    name=TRAIN_NAME,
+# TRAIN_NAME = "large_1024_hyper&augm_v1"
+# final_results = train_model(
+#     name=TRAIN_NAME,
+#     params={
+#         "imgsz": 1024,
+#         "optimizer": "AdamW",
+#         "epochs": 131,
+#         "batch": 8,
+#         "lr0": 0.00029631881419241645,
+#         "momentum": 0.38243835004885135,
+#         "weight_decay": 9.16499123351809e-05,
+#         "patience": 31,
+#         "hsv_h": 0.015,
+#         "hsv_s": 0.7,
+#         "hsv_v": 0.4,
+#         "degrees": 0.0,
+#         "translate": 0.1,
+#         "scale": 0.5,
+#         "shear": 0.0,
+#         "fliplr": 0.5,
+#         "mosaic": 1.0,
+#         "mixup": 0.0,
+#     },
+#     version=str(
+#         "/home/bachelor/ml-carbucks/results/large_1024_hyper&augm_v1/weights/last.pt"
+#     ),
+#     resume=True,
+# )
+
+# cpkl_path = RESULTS_DIR / f"{TRAIN_NAME}_results.pkl"
+# with open(cpkl_path, "wb") as f:
+#     cpkl.dump(final_results, f)
+
+# print(f"Train results {final_results} saved to {cpkl_path}")
+# NOTE: to view optuna dashboard in terminal: optuna dashboard sqlite:///{sql_path}
+
+ff_results = train_model(
+    name="rtdetr_l_320_final_v1",
     params={
-        "imgsz": 1024,
+        "imgsz": 320,
+        "batch": 16,
+        "epochs": 500,
         "optimizer": "AdamW",
-        "epochs": 131,
-        "batch": 8,
-        "lr0": 0.00029631881419241645,
-        "momentum": 0.38243835004885135,
-        "weight_decay": 9.16499123351809e-05,
-        "patience": 31,
-        "hsv_h": 0.015,
-        "hsv_s": 0.7,
-        "hsv_v": 0.4,
-        "degrees": 0.0,
-        "translate": 0.1,
-        "scale": 0.5,
-        "shear": 0.0,
-        "fliplr": 0.5,
-        "mosaic": 1.0,
-        "mixup": 0.0,
+        "lr0": 0.001,
     },
-    version=str(
-        "/home/bachelor/ml-carbucks/results/large_1024_hyper&augm_v1/weights/last.pt"
-    ),
-    resume=True,
+    version=RTDETR_PRETRAINED_L,
+    device="0",
 )
 
-cpkl_path = RESULTS_DIR / f"{TRAIN_NAME}_results.pkl"
+cpkl_path = RESULTS_DIR / "rtdetr_l_640_final_v1_results.pkl"
 with open(cpkl_path, "wb") as f:
-    cpkl.dump(final_results, f)
+    cpkl.dump(ff_results, f)
 
-print(f"Train results {final_results} saved to {cpkl_path}")
-# NOTE: to view optuna dashboard in terminal: optuna dashboard sqlite:///{sql_path}
+print(f"Train results {ff_results} saved to {cpkl_path}")

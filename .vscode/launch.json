@@ -11,6 +11,14 @@
             "request": "launch",
             "program": "${file}",
             "console": "internalConsole"
+        },
+        {
+            "name": "EfficientDet Train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ml_carbucks/car_damage/efficient_det.py",
+            "console": "internalConsole",
+            "justMyCode": false
         }
     ]
 }

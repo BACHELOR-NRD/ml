@@ -9,11 +9,13 @@ DATA_CAR_DD_DIR = DATA_DIR / "car_dd"
 DATA_CAR_DD_YAML = DATA_CAR_DD_DIR / "dataset.yaml"
 DATA_CAR_DD_TEST_IMAGES_DIR = DATA_CAR_DD_DIR / "images" / "test"
 
-YOLO_PRETRAINED_11N = DATA_DIR / "yolo_models" / "yolo11n.pt"
-YOLO_PRETRAINED_11S = DATA_DIR / "yolo_models" / "yolo11s.pt"
-YOLO_PRETRAINED_11M = DATA_DIR / "yolo_models" / "yolo11m.pt"
-YOLO_PRETRAINED_11L = DATA_DIR / "yolo_models" / "yolo11l.pt"
-YOLO_PRETRAINED_11X = DATA_DIR / "yolo_models" / "yolo11x.pt"
+YOLO_PRETRAINED_11N = DATA_DIR / "ultralytics_models" / "yolo11n.pt"
+YOLO_PRETRAINED_11S = DATA_DIR / "ultralytics_models" / "yolo11s.pt"
+YOLO_PRETRAINED_11M = DATA_DIR / "ultralytics_models" / "yolo11m.pt"
+YOLO_PRETRAINED_11L = DATA_DIR / "ultralytics_models" / "yolo11l.pt"
+YOLO_PRETRAINED_11X = DATA_DIR / "ultralytics_models" / "yolo11x.pt"
+
+RTDETR_PRETRAINED_L = DATA_DIR / "ultralytics_models" / "rtdetr-l.pt"
 
 
 os.makedirs(RESULTS_DIR, exist_ok=True)
