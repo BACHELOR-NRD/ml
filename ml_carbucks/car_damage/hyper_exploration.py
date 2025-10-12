@@ -271,13 +271,13 @@ def train_model(
 # NOTE: to view optuna dashboard in terminal: optuna dashboard sqlite:///{sql_path}
 
 ff_results = train_model(
-    name="rtdetr_l_320_final_v1",
+    name="rtdetr_l_320_lr-vsmall_v1",
     params={
         "imgsz": 320,
         "batch": 16,
         "epochs": 500,
         "optimizer": "AdamW",
-        "lr0": 0.001,
+        "lr0": 0.0001,
     },
     version=RTDETR_PRETRAINED_L,
     device="0",

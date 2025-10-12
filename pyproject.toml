@@ -27,9 +27,10 @@ accelerate = "^1.10.1"
 pycocotools = "^2.0.10"
 cloudpickle = "^3.1.1"
 imagehash = "^4.3.2"
-effdet = "^0.4.1"
 numpy = "^2.3.3"
 pandas = "^2.3.3"
+torchmetrics = "^1.8.2"
+effdet = "^0.4.1"
 
 
 [tool.poetry.group.dev.dependencies]
