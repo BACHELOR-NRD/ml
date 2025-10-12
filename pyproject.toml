@@ -31,6 +31,7 @@ numpy = "^2.3.3"
 pandas = "^2.3.3"
 torchmetrics = "^1.8.2"
 effdet = "^0.4.1"
+imageio = "^2.37.0"
 
 
 [tool.poetry.group.dev.dependencies]
