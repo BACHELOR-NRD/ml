@@ -8,10 +8,10 @@ from effdet.bench import DetBenchTrain, DetBenchPredict
 from ml_carbucks import DATA_DIR
 
 config = get_efficientdet_config(model_name)
-
+config.image_size = (320, 320)
 config.num_classes = 3
 
-BATCH_SIZE = 1
+BATCH_SIZE = 16
 # 🔧 FIX 1: Use model's expected image size instead of hardcoded 320
 IMG_SIZE = config.image_size[0]  # This will be 640 for tf_efficientdet_d1
 
@@ -125,19 +125,21 @@ train_loader = create_loader(
     batch_size=BATCH_SIZE,
     is_training=False,
 )
-it = iter(train_loader)
-batch = next(it)
 
 import torch
 
-optimizer = torch.optim.AdamW(bench.parameters(), lr=3e-3)
+optimizer = torch.optim.AdamW(bench.parameters(), lr=1e-4)
 EPOCHS = 500
 bench.train()
 for epoch in range(EPOCHS):
     ll = 0.0
     cl = 0.0
     bl = 0.0
+    cnt = 0
     for batch in train_loader:
+        cnt += 1
+        if cnt % 10 == 0:
+            print(f"Epoch {epoch+1}, processing batch {cnt}/{len(train_loader)}...")
         inputs, targets = batch
         output = bench(inputs, targets)  # ✅ This will now work!
         loss = output["loss"]
