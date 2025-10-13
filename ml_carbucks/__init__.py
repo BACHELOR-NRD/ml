@@ -19,3 +19,18 @@ RTDETR_PRETRAINED_L = DATA_DIR / "ultralytics_models" / "rtdetr-l.pt"
 
 
 os.makedirs(RESULTS_DIR, exist_ok=True)
+
+# Explicit public API for `from ml_carbucks import *` and clarity when importing names
+__all__ = [
+    "RESULTS_DIR",
+    "DATA_DIR",
+    "DATA_CAR_DD_DIR",
+    "DATA_CAR_DD_YAML",
+    "DATA_CAR_DD_TEST_IMAGES_DIR",
+    "YOLO_PRETRAINED_11N",
+    "YOLO_PRETRAINED_11S",
+    "YOLO_PRETRAINED_11M",
+    "YOLO_PRETRAINED_11L",
+    "YOLO_PRETRAINED_11X",
+    "RTDETR_PRETRAINED_L",
+]
