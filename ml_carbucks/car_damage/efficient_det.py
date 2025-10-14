@@ -7,11 +7,13 @@ from effdet.config import get_efficientdet_config
 from effdet.bench import DetBenchTrain, DetBenchPredict
 from ml_carbucks import DATA_DIR
 
+IMG_SIZE_TUPLE = (640, 640)
+
 config = get_efficientdet_config(model_name)
-config.image_size = (320, 320)
+config.image_size = IMG_SIZE_TUPLE
 config.num_classes = 3
 
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 # 🔧 FIX 1: Use model's expected image size instead of hardcoded 320
 IMG_SIZE = config.image_size[0]  # This will be 640 for tf_efficientdet_d1
 
@@ -112,49 +114,109 @@ def create_dataset_custom(
     return datasets if len(datasets) > 1 else datasets[0]
 
 
-train_dataset = create_dataset_custom(
-    name="train",
-    ann_file=DATA_DIR / "car_dd" / "instances_train.json",
-    img_dir=DATA_DIR / "car_dd" / "images" / "train",
+# train_dataset = create_dataset_custom(
+#     name="train",
+#     ann_file=DATA_DIR / "car_dd" / "instances_train.json",
+#     img_dir=DATA_DIR / "car_dd" / "images" / "train",
+#     limit=-1,
+# )
+
+# train_loader = create_loader(
+#     dataset=train_dataset,
+#     input_size=IMG_SIZE,  # Now uses correct size (640)
+#     batch_size=BATCH_SIZE,
+#     is_training=False,
+# )
+
+# import torch
+
+# optimizer = torch.optim.AdamW(bench.parameters(), lr=8e-4)
+# EPOCHS = 200
+# bench.train()
+# for epoch in range(EPOCHS):
+#     ll = 0.0
+#     cl = 0.0
+#     bl = 0.0
+#     cnt = 0
+#     for batch in train_loader:
+#         cnt += 1
+#         if cnt % 10 == 0:
+#             print(f"Epoch {epoch+1}, processing batch {cnt}/{len(train_loader)}...")
+#         inputs, targets = batch
+#         output = bench(inputs, targets)  # ✅ This will now work!
+#         loss = output["loss"]
+#         optimizer.zero_grad()
+#         loss.backward()
+#         optimizer.step()
+
+#         ll += loss.item()
+#         cl += output["class_loss"].item()
+#         bl += output["box_loss"].item()
+
+#     print(
+#         f"Epoch {epoch+1}/{EPOCHS}, Loss: {ll:.4f}, cls_loss: {cl:.4f}, box_loss: {bl:.4f}"
+#     )
+
+
+# # save bench.model
+# torch.save(bench.model.state_dict(), f"effdet_{model_name}_v2.pth")
+
+
+from effdet.bench import DetBenchPredict
+
+# model_path = "/home/bachelor/ml-carbucks/effdet_tf_efficientdet_d4.pth"
+
+
+test_dataset = create_dataset_custom(
+    name="val",
+    # ann_file=DATA_DIR / "car_dd" / "instances_val.json",
+    # img_dir=DATA_DIR / "car_dd" / "images" / "val",
+    ann_file=DATA_DIR / "mscoco" / "annotations" / "instances_val2017.json",
+    img_dir=DATA_DIR / "mscoco" / "val2017",
     limit=-1,
 )
 
-train_loader = create_loader(
-    dataset=train_dataset,
-    input_size=IMG_SIZE,  # Now uses correct size (640)
-    batch_size=BATCH_SIZE,
-    is_training=False,
+test_loader = create_loader(
+    dataset=test_dataset, input_size=IMG_SIZE, batch_size=BATCH_SIZE, is_training=False
 )
 
+
+evaluator = create_evaluator(
+    name="coco",
+    dataset=test_dataset,
+    pred_yxyx=True,
+)
 import torch
 
-optimizer = torch.optim.AdamW(bench.parameters(), lr=1e-4)
-EPOCHS = 500
-bench.train()
-for epoch in range(EPOCHS):
-    ll = 0.0
-    cl = 0.0
-    bl = 0.0
-    cnt = 0
-    for batch in train_loader:
-        cnt += 1
-        if cnt % 10 == 0:
-            print(f"Epoch {epoch+1}, processing batch {cnt}/{len(train_loader)}...")
-        inputs, targets = batch
-        output = bench(inputs, targets)  # ✅ This will now work!
-        loss = output["loss"]
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+config2 = get_efficientdet_config(model_name)
+config2.num_classes = 3
+config2.image_size = IMG_SIZE_TUPLE
+model2 = EfficientDet(config2, pretrained_backbone=False)
+model2.reset_head(num_classes=config2.num_classes)
+# model2.load_state_dict(torch.load(model_path))
+model2.eval().cuda()
 
-        ll += loss.item()
-        cl += output["class_loss"].item()
-        bl += output["box_loss"].item()
+predictor = DetBenchPredict(model2).cuda()
+predictor.eval()
 
-    print(
-        f"Epoch {epoch+1}/{EPOCHS}, Loss: {ll:.4f}, cls_loss: {cl:.4f}, box_loss: {bl:.4f}"
-    )
+from tqdm import tqdm
+from ml_carbucks.utils import plot_img_pred
+
+with torch.no_grad():
+    for batch2 in tqdm(test_loader):
+        inputs, targets = batch2
+        outputs = predictor(inputs.cuda())
+
+        filtered_outputs = []
+        for preds in outputs:
+            filtered = preds[preds[:, 4] > 0.1]
+            filtered_outputs.append(filtered)
+
+        # plot_img_pred(inputs[0], filtered_outputs[0][:, :4], save_dir="results")
+        evaluator.add_predictions(outputs, targets)
+
+metrics = evaluator.evaluate()
+print(metrics)
 
 
-# save bench.model
-torch.save(bench.model.state_dict(), f"effdet_{model_name}.pth")
+print("Done!")
