@@ -75,6 +75,9 @@ else:
 bench_train = bench_train.cuda()
 bench_train.train()
 for epoch in range(EPOCHS):
+    sll = 0.0
+    sbl = 0.0
+    scl = 0.0
     for batch_idx, (input, target) in enumerate(train_loader):
         output = bench_train(input, target)
         loss = output["loss"]
@@ -82,8 +85,15 @@ for epoch in range(EPOCHS):
         loss.backward()
         optimizer.step()
 
+        sll += loss.item()  # type: ignore
+        sbl += output["box_loss"].item()  # type: ignore
+        scl += output["class_loss"].item()  # type: ignore
+
+    sll /= len(train_loader)
+    sbl /= len(train_loader)
+    scl /= len(train_loader)
     if (epoch + 1) % 10 == 0 or epoch == 0:
-        print(f"Epoch {epoch + 1}/{EPOCHS}, Loss: {loss.item()}")  # type: ignore
+        print(f"Epoch {epoch + 1}/{EPOCHS}, Loss: {sll}, Box Loss: {sbl}, Class Loss: {scl}")  # type: ignore
     # NOTE: it could be nice to add validation here and later just test the best model insetad of evalaution as it is now
 
 
@@ -141,4 +151,4 @@ with torch.no_grad():
 
 metrics = evaluator.evaluate()
 print(metrics)
-cpkl.dump(metrics, open(f"{MODEL_NAME}_{RUNTIME}_metrics.pkl", "wb"))
+cpkl.dump(metrics, open(f"{MODEL_NAME}_{RUNTIME}_metrics.cpkl", "wb"))
