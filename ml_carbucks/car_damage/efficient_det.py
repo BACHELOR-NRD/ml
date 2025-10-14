@@ -1,6 +1,7 @@
 import torch
 import datetime as dt
 
+import cloudpickle as cpkl
 from effdet import create_model, create_loader, create_evaluator
 from effdet.data import resolve_input_config
 from effdet.anchors import Anchors, AnchorLabeler
@@ -13,7 +14,7 @@ from ml_carbucks.utils import create_dataset_custom
 BATCH_SIZE = 16
 IMG_SIZE = 320
 NUM_CLASSES = None
-EPOCHS = 400
+EPOCHS = 150
 FREEZE_BACKBONE = False
 LR = 1e-4
 extra_args = dict(image_size=(IMG_SIZE, IMG_SIZE))
@@ -140,3 +141,4 @@ with torch.no_grad():
 
 metrics = evaluator.evaluate()
 print(metrics)
+cpkl.dump(metrics, open(f"{MODEL_NAME}_{RUNTIME}_metrics.pkl", "wb"))
