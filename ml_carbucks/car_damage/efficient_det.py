@@ -82,7 +82,7 @@ for epoch in range(EPOCHS):
         optimizer.step()
 
     if (epoch + 1) % 10 == 0 or epoch == 0:
-        print(f"Epoch {epoch + 1}/{EPOCHS}, Loss: {loss.item():.4f }")  # type: ignore
+        print(f"Epoch {epoch + 1}/{EPOCHS}, Loss: {loss.item()}")  # type: ignore
     # NOTE: it could be nice to add validation here and later just test the best model insetad of evalaution as it is now
 
 
