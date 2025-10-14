@@ -1,222 +1,142 @@
-# CORRECTED ORIGINAL CODE: Fixed both image size and labeler issues
-model_name = "tf_efficientdet_d4"
-
-from pathlib import Path
-from typing import Union
-from effdet.config import get_efficientdet_config
-from effdet.bench import DetBenchTrain, DetBenchPredict
-from ml_carbucks import DATA_DIR
-
-IMG_SIZE_TUPLE = (640, 640)
-
-config = get_efficientdet_config(model_name)
-config.image_size = IMG_SIZE_TUPLE
-config.num_classes = 3
-
-BATCH_SIZE = 4
-# 🔧 FIX 1: Use model's expected image size instead of hardcoded 320
-IMG_SIZE = config.image_size[0]  # This will be 640 for tf_efficientdet_d1
-
-from effdet import EfficientDet
-
-model = EfficientDet(config, pretrained_backbone=True)
-model.reset_head(num_classes=config.num_classes)
-
-# 🔧 FIX 2: Set create_labeler=True to auto-create the anchor labeler
-bench = DetBenchTrain(model, create_labeler=True).cuda()
-bench_config = bench.config
-
-# Note: We don't need manual AnchorLabeler anymore since create_labeler=True
-# from effdet.anchors import Anchors, AnchorLabeler
-# labeler = AnchorLabeler(...)
-
-from effdet import create_loader, create_dataset, create_evaluator
-from effdet.anchors import Anchors, AnchorLabeler
-from effdet.data.dataset_config import Coco2017Cfg
-from effdet.data.parsers import CocoParserCfg, create_parser
-from effdet.data.dataset import DetectionDatset
-from collections import OrderedDict
-
-# Allow limiting the number of images returned by the dataset
-# `limit` takes an int: -1 means no limit, otherwise return up to `limit` examples
-# `limit_mode`: 'first' -> take first N images, 'random' -> sample N images randomly
-# `seed`: optional seed for reproducible random sampling
-
-
-# Instead of torch.utils.data.Subset, create a dataset-like wrapper that
-# preserves the original dataset type and API while only exposing the
-# selected indices. This avoids type differences for downstream code.
-class FilteredDataset:
-    def __init__(self, base_dataset, indices):
-        self.base_dataset = base_dataset
-        self.indices = list(indices)
-
-    def __len__(self):
-        return len(self.indices)
-
-    def __getitem__(self, idx):
-        actual_idx = self.indices[idx]
-        return self.base_dataset[actual_idx]
-
-    # delegate attribute access for attributes not found on this wrapper
-    def __getattr__(self, name):
-        return getattr(self.base_dataset, name)
-
-    # Explicitly expose parser and transform properties with setter delegation
-    @property
-    def parser(self):
-        return self.base_dataset.parser
-
-    @property
-    def transform(self):
-        return self.base_dataset.transform
-
-    @transform.setter
-    def transform(self, t):
-        # When create_loader sets dataset.transform = ..., delegate to base dataset
-        self.base_dataset.transform = t
-
-
-def create_dataset_custom(
-    name: str,
-    img_dir: Union[str, Path],
-    ann_file: Union[str, Path],
-    limit: int = -1,
-    limit_mode: str = "first",
-    seed: int | None = None,
-):
-
-    datasets = OrderedDict()
-    dataset_cfg = Coco2017Cfg()
-    parser = CocoParserCfg(ann_filename=str(ann_file))
-    dataset_cls = DetectionDatset
-    dataset = dataset_cls(
-        data_dir=img_dir,
-        parser=create_parser(dataset_cfg.parser, cfg=parser),
-    )
-
-    # If limit is set and positive, create a FilteredDataset so the loader
-    # only iterates over up to `limit` items. This limits images inside the dataset.
-    if limit is not None and int(limit) > 0:
-        n = min(int(limit), len(dataset))
-        if limit_mode == "random":
-            import random
-
-            rng = random.Random(seed)
-            indices = rng.sample(range(len(dataset)), n)
-        else:
-            # default 'first' behaviour
-            indices = list(range(n))
-        dataset = FilteredDataset(dataset, indices)
-
-    datasets[name] = dataset
-    datasets = list(datasets.values())
-    return datasets if len(datasets) > 1 else datasets[0]
-
-
-# train_dataset = create_dataset_custom(
-#     name="train",
-#     ann_file=DATA_DIR / "car_dd" / "instances_train.json",
-#     img_dir=DATA_DIR / "car_dd" / "images" / "train",
-#     limit=-1,
-# )
-
-# train_loader = create_loader(
-#     dataset=train_dataset,
-#     input_size=IMG_SIZE,  # Now uses correct size (640)
-#     batch_size=BATCH_SIZE,
-#     is_training=False,
-# )
-
-# import torch
-
-# optimizer = torch.optim.AdamW(bench.parameters(), lr=8e-4)
-# EPOCHS = 200
-# bench.train()
-# for epoch in range(EPOCHS):
-#     ll = 0.0
-#     cl = 0.0
-#     bl = 0.0
-#     cnt = 0
-#     for batch in train_loader:
-#         cnt += 1
-#         if cnt % 10 == 0:
-#             print(f"Epoch {epoch+1}, processing batch {cnt}/{len(train_loader)}...")
-#         inputs, targets = batch
-#         output = bench(inputs, targets)  # ✅ This will now work!
-#         loss = output["loss"]
-#         optimizer.zero_grad()
-#         loss.backward()
-#         optimizer.step()
-
-#         ll += loss.item()
-#         cl += output["class_loss"].item()
-#         bl += output["box_loss"].item()
-
-#     print(
-#         f"Epoch {epoch+1}/{EPOCHS}, Loss: {ll:.4f}, cls_loss: {cl:.4f}, box_loss: {bl:.4f}"
-#     )
-
-
-# # save bench.model
-# torch.save(bench.model.state_dict(), f"effdet_{model_name}_v2.pth")
-
-
-from effdet.bench import DetBenchPredict
-
-# model_path = "/home/bachelor/ml-carbucks/effdet_tf_efficientdet_d4.pth"
-
-
-test_dataset = create_dataset_custom(
-    name="val",
-    # ann_file=DATA_DIR / "car_dd" / "instances_val.json",
-    # img_dir=DATA_DIR / "car_dd" / "images" / "val",
-    ann_file=DATA_DIR / "mscoco" / "annotations" / "instances_val2017.json",
-    img_dir=DATA_DIR / "mscoco" / "val2017",
-    limit=-1,
-)
-
-test_loader = create_loader(
-    dataset=test_dataset, input_size=IMG_SIZE, batch_size=BATCH_SIZE, is_training=False
-)
-
-
-evaluator = create_evaluator(
-    name="coco",
-    dataset=test_dataset,
-    pred_yxyx=True,
-)
 import torch
+import datetime as dt
 
-config2 = get_efficientdet_config(model_name)
-config2.num_classes = 3
-config2.image_size = IMG_SIZE_TUPLE
-model2 = EfficientDet(config2, pretrained_backbone=False)
-model2.reset_head(num_classes=config2.num_classes)
-# model2.load_state_dict(torch.load(model_path))
-model2.eval().cuda()
+from effdet import create_model, create_loader, create_evaluator
+from effdet.data import resolve_input_config
+from effdet.anchors import Anchors, AnchorLabeler
 
-predictor = DetBenchPredict(model2).cuda()
-predictor.eval()
+from ml_carbucks import DATA_CAR_DD_DIR
+from ml_carbucks.utils import create_dataset_custom
 
-from tqdm import tqdm
-from ml_carbucks.utils import plot_img_pred
+# CONFIGURATION
+
+BATCH_SIZE = 16
+IMG_SIZE = 320
+NUM_CLASSES = None
+EPOCHS = 400
+FREEZE_BACKBONE = False
+LR = 1e-4
+extra_args = dict(image_size=(IMG_SIZE, IMG_SIZE))
+MODEL_NAME = "tf_efficientdet_d4"
+RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+# TRAINING
+
+bench_train = create_model(
+    model_name=MODEL_NAME,
+    bench_task="train",
+    num_classes=NUM_CLASSES,
+    pretrained=True,
+    redundant_bias=None,
+    soft_nms=None,
+    checkpoint_path="",
+    checkpoint_ema=False,
+    **extra_args,
+)
+model_train_config = bench_train.config
+labeler = AnchorLabeler(
+    Anchors.from_config(model_train_config),
+    model_train_config.num_classes,
+    match_threshold=0.5,
+)
+
+train_dataset = create_dataset_custom(
+    name="train",
+    img_dir=DATA_CAR_DD_DIR / "images" / "train",
+    ann_file=DATA_CAR_DD_DIR / "instances_train.json",
+)
+
+train_input_config = resolve_input_config({}, model_train_config)
+train_loader = create_loader(
+    train_dataset,
+    input_size=train_input_config["input_size"],
+    batch_size=BATCH_SIZE,
+    use_prefetcher=True,
+    interpolation=train_input_config["interpolation"],
+    mean=train_input_config["mean"],
+    std=train_input_config["std"],
+    num_workers=4,
+    pin_mem=False,
+    anchor_labeler=labeler,
+)
+
+if FREEZE_BACKBONE is True:
+    for param in bench_train.model.backbone.parameters():  # type: ignore
+        param.requires_grad = False
+
+    optimizer = torch.optim.AdamW(
+        filter(lambda p: p.requires_grad, bench_train.parameters()), lr=LR
+    )
+else:
+    optimizer = torch.optim.AdamW(bench_train.parameters(), lr=LR)
+
+bench_train = bench_train.cuda()
+bench_train.train()
+for epoch in range(EPOCHS):
+    for batch_idx, (input, target) in enumerate(train_loader):
+        output = bench_train(input, target)
+        loss = output["loss"]
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    if (epoch + 1) % 10 == 0 or epoch == 0:
+        print(f"Epoch {epoch + 1}/{EPOCHS}, Loss: {loss.item():.4f }")  # type: ignore
+    # NOTE: it could be nice to add validation here and later just test the best model insetad of evalaution as it is now
+
+
+train_state_dict = bench_train.model.state_dict()  # type: ignore
+
+torch.save(train_state_dict, f"{MODEL_NAME}_{RUNTIME}.pth")
+
+
+# EVALUATION
+
+bench_pred = create_model(
+    model_name=MODEL_NAME,
+    bench_task="predict",
+    num_classes=NUM_CLASSES,
+    pretrained=True,
+    redundant_bias=None,
+    soft_nms=None,
+    checkpoint_path="",
+    checkpoint_ema=False,
+    **extra_args,
+)
+bench_pred.model.load_state_dict(train_state_dict)  # type: ignore
+model_pred_config = bench_pred.config
+bench_pred = bench_pred.cuda()
+
+val_dataset = create_dataset_custom(
+    name="val",
+    img_dir=DATA_CAR_DD_DIR / "images" / "val",
+    ann_file=DATA_CAR_DD_DIR / "instances_val.json",
+)
+
+input_config = resolve_input_config({}, model_pred_config)
+loader = create_loader(
+    val_dataset,
+    input_size=input_config["input_size"],
+    batch_size=BATCH_SIZE,
+    use_prefetcher=True,
+    interpolation=input_config["interpolation"],
+    mean=input_config["mean"],
+    std=input_config["std"],
+    num_workers=4,
+    pin_mem=False,
+)
+evaluator = create_evaluator("coco", val_dataset, pred_yxyx=False)
+bench_pred.eval()
+
 
 with torch.no_grad():
-    for batch2 in tqdm(test_loader):
-        inputs, targets = batch2
-        outputs = predictor(inputs.cuda())
+    for i, (input, target) in enumerate(loader):
+        output = bench_pred(input, img_info=target)
+        evaluator.add_predictions(output, target)
 
-        filtered_outputs = []
-        for preds in outputs:
-            filtered = preds[preds[:, 4] > 0.1]
-            filtered_outputs.append(filtered)
-
-        # plot_img_pred(inputs[0], filtered_outputs[0][:, :4], save_dir="results")
-        evaluator.add_predictions(outputs, targets)
+        if i % 10 == 0:
+            print(f"Eval {i}/{len(loader)}")
 
 metrics = evaluator.evaluate()
 print(metrics)
-
-
-print("Done!")

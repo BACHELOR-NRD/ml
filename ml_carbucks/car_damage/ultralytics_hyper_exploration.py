@@ -2,7 +2,8 @@ import datetime as dt  # noqa: F401
 from pathlib import Path
 from typing import Any, Callable, Dict, Union
 
-from ultralytics import YOLO, RTDETR
+from ultralytics.models.yolo.model import YOLO
+from ultralytics.models.rtdetr.model import RTDETR
 from optuna import Trial
 import optuna
 import cloudpickle as cpkl  # noqa: F401
@@ -108,8 +109,8 @@ def create_objective(
             )
 
             trial.set_user_attr("params", params)
-            trial.set_user_attr("results", results.results_dict)
-            score = results.fitness
+            trial.set_user_attr("results", results.results_dict)  # type: ignore
+            score = results.fitness  # type: ignore
 
             del results
 
@@ -216,7 +217,7 @@ def train_model(
     resume: bool = False,
 ) -> Any:
     if "rtdetr" in str(version):
-        model = RTDETR(version)
+        model = RTDETR(str(version))
     else:
         model = YOLO(version)
     results = model.train(
@@ -270,21 +271,19 @@ def train_model(
 # print(f"Train results {final_results} saved to {cpkl_path}")
 # NOTE: to view optuna dashboard in terminal: optuna dashboard sqlite:///{sql_path}
 
-ff_results = train_model(
-    name="rtdetr_l_320_lr-vsmall_v1",
-    params={
-        "imgsz": 320,
-        "batch": 16,
-        "epochs": 500,
-        "optimizer": "AdamW",
-        "lr0": 0.0001,
-    },
-    version=RTDETR_PRETRAINED_L,
-    device="0",
-)
-
-cpkl_path = RESULTS_DIR / "rtdetr_l_640_final_v1_results.pkl"
-with open(cpkl_path, "wb") as f:
-    cpkl.dump(ff_results, f)
-
-print(f"Train results {ff_results} saved to {cpkl_path}")
+# ff_results = train_model(
+#     name="rtdetr_l_320_lr-vsmall_v1",
+#     params={
+#         "imgsz": 320,
+#         "batch": 16,
+#         "epochs": 500,
+#         "optimizer": "AdamW",
+#         "lr0": 0.0001,
+#     },
+#     version=RTDETR_PRETRAINED_L,
+#     device="0",
+# )
+# cpkl_path = RESULTS_DIR / "rtdetr_l_640_final_v1_results.pkl"
+# with open(cpkl_path, "wb") as f:
+#     cpkl.dump(ff_results, f)
+# print(f"Train results {ff_results} saved to {cpkl_path}")
