@@ -1,6 +1,8 @@
 import json
 import torch
 import datetime as dt
+from tqdm import tqdm
+from collections import defaultdict
 
 import pandas as pd
 from effdet import create_model, create_loader, create_evaluator
@@ -15,11 +17,11 @@ from ml_carbucks.utils.coco import CocoStatsEvaluator, create_dataset_custom
 BATCH_SIZE = 16
 IMG_SIZE = 320
 NUM_CLASSES = None
-EPOCHS = 50
+EPOCHS = 30
 FREEZE_BACKBONE = False
 LR = 1e-4
 extra_args = dict(image_size=(IMG_SIZE, IMG_SIZE))
-MODEL_NAME = "tf_efficientdet_d4"
+MODEL_NAME = "tf_efficientdet_d2"
 RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
@@ -95,22 +97,15 @@ else:
     optimizer = torch.optim.AdamW(bench_train.parameters(), lr=LR)
 
 bench_train = bench_train.cuda()
-training_progress = {
-    "epoch": [],
-    "loss": [],
-    "box_loss": [],
-    "class_loss": [],
-    "val_map50-90": [],
-    "start_time": [],
-}
+training_progress = defaultdict(list)
 
+COMPUTE_CYCLE = 3
 for epoch in range(EPOCHS):
     sll = 0.0
     sbl = 0.0
     scl = 0.0
     stats = [-1] * 12
-    DISPLAY_EVERY_CNT = 3
-    DISPLAY_STATS_ON_EPOCH = (epoch + 1) % DISPLAY_EVERY_CNT == 0 or epoch == 0
+    DO_ADDITIONAL_COMPUTE = (epoch + 1) % COMPUTE_CYCLE == 0 or epoch == 0
     training_progress["start_time"].append(
         dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
@@ -119,7 +114,9 @@ for epoch in range(EPOCHS):
         raise ValueError("Training loader is empty. Check the dataset and annotations.")
 
     bench_train.train()
-    for batch_idx, (input, target) in enumerate(train_loader):
+    for input, target in tqdm(
+        train_loader, desc=f"Epoch {epoch + 1} | Training batches"
+    ):
         output = bench_train(input, target)
         loss = output["loss"]
         optimizer.zero_grad()
@@ -130,14 +127,15 @@ for epoch in range(EPOCHS):
         sbl += output["box_loss"].item()  # type: ignore
         scl += output["class_loss"].item()  # type: ignore
 
-        if DISPLAY_STATS_ON_EPOCH:
-            bench_train.eval()
-            with torch.no_grad():
-                for i, (input, target) in enumerate(val_loader):
-                    output = bench_train(input, target)  # type: ignore
-                    train_evaluator.add_predictions(output["detections"], target)  # type: ignore
+    if DO_ADDITIONAL_COMPUTE:
+        bench_train.eval()
+        with torch.no_grad():
+            for input, target in tqdm(
+                val_loader, desc=f"Epoch {epoch + 1} | Validation batches"
+            ):
+                output = bench_train(input, target)  # type: ignore
+                train_evaluator.add_predictions(output["detections"], target)  # type: ignore
 
-    if DISPLAY_STATS_ON_EPOCH:
         stats = train_evaluator.evaluate()
         stats = [round(s, 4) for s in stats]
         train_evaluator.reset()
@@ -157,7 +155,7 @@ for epoch in range(EPOCHS):
     pd.DataFrame(training_progress).to_csv(
         f"training_{MODEL_NAME}_{RUNTIME}.csv", index=False
     )
-    if DISPLAY_STATS_ON_EPOCH:
+    if DO_ADDITIONAL_COMPUTE:
         print(
             f"Epoch {epoch + 1}/{EPOCHS}, Loss: {all}, BoxLoss: {abl}, ClassLoss: {acl}, val_mAP50-90: {stats[0]} val_mAP50: {stats[1]} val_mAR50-95: {stats[8]}"
         )
