@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import json
 from pathlib import Path
@@ -73,6 +74,9 @@ def create_dataset_custom(
     Returns:
         The created dataset or a list of datasets if multiple are created.
     """
+
+    if isinstance(img_dir, str):
+        img_dir = Path(deepcopy(img_dir))
 
     datasets = OrderedDict()
     dataset_cfg = Coco2017Cfg()
