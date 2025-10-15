@@ -8,14 +8,14 @@ from effdet.data import resolve_input_config
 from effdet.anchors import Anchors, AnchorLabeler
 
 from ml_carbucks import DATA_CAR_DD_DIR
-from ml_carbucks.utils import create_dataset_custom
+from ml_carbucks.utils import CocoStatsEvaluator, create_dataset_custom
 
 # CONFIGURATION
 
 BATCH_SIZE = 16
 IMG_SIZE = 320
 NUM_CLASSES = None
-EPOCHS = 150
+EPOCHS = 50
 FREEZE_BACKBONE = False
 LR = 1e-4
 extra_args = dict(image_size=(IMG_SIZE, IMG_SIZE))
@@ -82,7 +82,7 @@ val_loader = create_loader(
     anchor_labeler=labeler,
 )
 
-train_evaluator = create_evaluator("coco", val_dataset, pred_yxyx=False)
+train_evaluator = CocoStatsEvaluator(val_dataset, distributed=False, pred_yxyx=False)
 
 if FREEZE_BACKBONE is True:
     for param in bench_train.model.backbone.parameters():  # type: ignore
@@ -101,15 +101,22 @@ training_progress = {
     "box_loss": [],
     "class_loss": [],
     "val_map50-90": [],
+    "start_time": [],
 }
 
 for epoch in range(EPOCHS):
     sll = 0.0
     sbl = 0.0
     scl = 0.0
-    map5090 = -1.0
+    stats = [-1]
     bench_train.train()
     DISPLAY_STATS_ON_EPOCH = (epoch + 1) % 10 == 0 or epoch == 0
+    training_progress["start_time"].append(
+        dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    )
+
+    if len(train_loader) == 0:
+        raise ValueError("Training loader is empty. Check the dataset and annotations.")
 
     for batch_idx, (input, target) in enumerate(train_loader):
         output = bench_train(input, target)
@@ -129,23 +136,25 @@ for epoch in range(EPOCHS):
                     output = bench_train(input, target)  # type: ignore
                     train_evaluator.add_predictions(output["detections"], target)  # type: ignore
 
-            map5090 = train_evaluator.evaluate()
+            stats = train_evaluator.evaluate()
             train_evaluator.reset()
 
-    all = round(sll / len(train_loader), 2)
-    abl = round(sbl / len(train_loader), 2)
-    acl = round(scl / len(train_loader), 2)
+    all = round(sll / len(train_loader), 4)
+    abl = round(sbl / len(train_loader), 4)
+    acl = round(scl / len(train_loader), 4)
     training_progress["epoch"].append(epoch + 1)
     training_progress["loss"].append(all)
     training_progress["box_loss"].append(abl)
     training_progress["class_loss"].append(acl)
-    training_progress["val_map50-90"].append(map5090)
+    training_progress["val_map50-90"].append(stats[0])
+    # NOTE: you could add more stats if needed, stats[0] is mAP 50-95
+
     pd.DataFrame(training_progress).to_csv(
         f"training_{MODEL_NAME}_{RUNTIME}.csv", index=False
     )
     if DISPLAY_STATS_ON_EPOCH:
         print(
-            f"Epoch {epoch + 1}/{EPOCHS}, Loss: {all}, BoxLoss: {abl}, ClassLoss: {acl}, val_map50-90: {map5090}"
+            f"Epoch {epoch + 1}/{EPOCHS}, Loss: {all}, BoxLoss: {abl}, ClassLoss: {acl}, val_map50-90: {stats[0]}"
         )
 
 
