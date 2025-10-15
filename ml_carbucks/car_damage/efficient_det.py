@@ -108,9 +108,9 @@ for epoch in range(EPOCHS):
     sll = 0.0
     sbl = 0.0
     scl = 0.0
-    stats = [-1]
-    bench_train.train()
-    DISPLAY_STATS_ON_EPOCH = (epoch + 1) % 10 == 0 or epoch == 0
+    stats = [-1] * 12
+    DISPLAY_EVERY_CNT = 3
+    DISPLAY_STATS_ON_EPOCH = (epoch + 1) % DISPLAY_EVERY_CNT == 0 or epoch == 0
     training_progress["start_time"].append(
         dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )
@@ -118,6 +118,7 @@ for epoch in range(EPOCHS):
     if len(train_loader) == 0:
         raise ValueError("Training loader is empty. Check the dataset and annotations.")
 
+    bench_train.train()
     for batch_idx, (input, target) in enumerate(train_loader):
         output = bench_train(input, target)
         loss = output["loss"]
@@ -136,8 +137,10 @@ for epoch in range(EPOCHS):
                     output = bench_train(input, target)  # type: ignore
                     train_evaluator.add_predictions(output["detections"], target)  # type: ignore
 
-            stats = train_evaluator.evaluate()
-            train_evaluator.reset()
+    if DISPLAY_STATS_ON_EPOCH:
+        stats = train_evaluator.evaluate()
+        stats = [round(s, 4) for s in stats]
+        train_evaluator.reset()
 
     all = round(sll / len(train_loader), 4)
     abl = round(sbl / len(train_loader), 4)
@@ -146,7 +149,9 @@ for epoch in range(EPOCHS):
     training_progress["loss"].append(all)
     training_progress["box_loss"].append(abl)
     training_progress["class_loss"].append(acl)
-    training_progress["val_map50-90"].append(stats[0])
+    training_progress["val_mAP50-90"].append(stats[0])
+    training_progress["val_mAP50"].append(stats[1])
+    training_progress["val_mAR50-95"].append(stats[8])
     # NOTE: you could add more stats if needed, stats[0] is mAP 50-95
 
     pd.DataFrame(training_progress).to_csv(
@@ -154,7 +159,7 @@ for epoch in range(EPOCHS):
     )
     if DISPLAY_STATS_ON_EPOCH:
         print(
-            f"Epoch {epoch + 1}/{EPOCHS}, Loss: {all}, BoxLoss: {abl}, ClassLoss: {acl}, val_map50-90: {stats[0]}"
+            f"Epoch {epoch + 1}/{EPOCHS}, Loss: {all}, BoxLoss: {abl}, ClassLoss: {acl}, val_mAP50-90: {stats[0]} val_mAP50: {stats[1]} val_mAR50-95: {stats[8]}"
         )
 
 
