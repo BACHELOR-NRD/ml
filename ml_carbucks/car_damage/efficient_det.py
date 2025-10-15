@@ -115,7 +115,7 @@ for epoch in range(EPOCHS):
 
     bench_train.train()
     for input, target in tqdm(
-        train_loader, desc=f"Epoch {epoch + 1} | Training batches"
+        train_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Training batches"
     ):
         output = bench_train(input, target)
         loss = output["loss"]
@@ -131,7 +131,7 @@ for epoch in range(EPOCHS):
         bench_train.eval()
         with torch.no_grad():
             for input, target in tqdm(
-                val_loader, desc=f"Epoch {epoch + 1} | Validation batches"
+                val_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Validation batches"
             ):
                 output = bench_train(input, target)  # type: ignore
                 train_evaluator.add_predictions(output["detections"], target)  # type: ignore
