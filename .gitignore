@@ -2,8 +2,6 @@
 __pycache__/
 .venv/
 
-
-
 # Model run files
 **/runs/
 **/weights/
@@ -16,13 +14,8 @@ __pycache__/
 **/*.pth
 **/*.pkl
 **/*.cpkl
+**/*.csv
 **/outputs/
-
-
-# Ignore files 
-**/*ignore*.*
-**/*ignore*/
-
 
 # Data files
 **/data/**
@@ -33,3 +26,11 @@ __pycache__/
 # !**/data/**/*.yaml
 # !**/data/**/*.json
 
+# Product files
+!**/products/*.pt
+!**/products/*.pth
+!**/products/*.csv
+
+# Ignore files 
+**/*ignore*.*
+**/*ignore*/
