@@ -1,7 +1,8 @@
+import json
 import torch
 import datetime as dt
 
-import cloudpickle as cpkl
+import pandas as pd
 from effdet import create_model, create_loader, create_evaluator
 from effdet.data import resolve_input_config
 from effdet.anchors import Anchors, AnchorLabeler
@@ -62,6 +63,27 @@ train_loader = create_loader(
     anchor_labeler=labeler,
 )
 
+val_dataset = create_dataset_custom(
+    name="val",
+    img_dir=DATA_CAR_DD_DIR / "images" / "val",
+    ann_file=DATA_CAR_DD_DIR / "instances_val.json",
+)
+
+val_loader = create_loader(
+    val_dataset,
+    input_size=train_input_config["input_size"],
+    batch_size=BATCH_SIZE,
+    use_prefetcher=True,
+    interpolation=train_input_config["interpolation"],
+    mean=train_input_config["mean"],
+    std=train_input_config["std"],
+    num_workers=4,
+    pin_mem=False,
+    anchor_labeler=labeler,
+)
+
+train_evaluator = create_evaluator("coco", val_dataset, pred_yxyx=False)
+
 if FREEZE_BACKBONE is True:
     for param in bench_train.model.backbone.parameters():  # type: ignore
         param.requires_grad = False
@@ -73,11 +95,22 @@ else:
     optimizer = torch.optim.AdamW(bench_train.parameters(), lr=LR)
 
 bench_train = bench_train.cuda()
-bench_train.train()
+training_progress = {
+    "epoch": [],
+    "loss": [],
+    "box_loss": [],
+    "class_loss": [],
+    "val_map50-90": [],
+}
+
 for epoch in range(EPOCHS):
     sll = 0.0
     sbl = 0.0
     scl = 0.0
+    map5090 = -1.0
+    bench_train.train()
+    DISPLAY_STATS_ON_EPOCH = (epoch + 1) % 10 == 0 or epoch == 0
+
     for batch_idx, (input, target) in enumerate(train_loader):
         output = bench_train(input, target)
         loss = output["loss"]
@@ -89,12 +122,31 @@ for epoch in range(EPOCHS):
         sbl += output["box_loss"].item()  # type: ignore
         scl += output["class_loss"].item()  # type: ignore
 
-    sll /= len(train_loader)
-    sbl /= len(train_loader)
-    scl /= len(train_loader)
-    if (epoch + 1) % 10 == 0 or epoch == 0:
-        print(f"Epoch {epoch + 1}/{EPOCHS}, Loss: {sll}, Box Loss: {sbl}, Class Loss: {scl}")  # type: ignore
-    # NOTE: it could be nice to add validation here and later just test the best model insetad of evalaution as it is now
+        if DISPLAY_STATS_ON_EPOCH:
+            bench_train.eval()
+            with torch.no_grad():
+                for i, (input, target) in enumerate(val_loader):
+                    output = bench_train(input, target)  # type: ignore
+                    train_evaluator.add_predictions(output["detections"], target)  # type: ignore
+
+            map5090 = train_evaluator.evaluate()
+            train_evaluator.reset()
+
+    all = round(sll / len(train_loader), 2)
+    abl = round(sbl / len(train_loader), 2)
+    acl = round(scl / len(train_loader), 2)
+    training_progress["epoch"].append(epoch + 1)
+    training_progress["loss"].append(all)
+    training_progress["box_loss"].append(abl)
+    training_progress["class_loss"].append(acl)
+    training_progress["val_map50-90"].append(map5090)
+    pd.DataFrame(training_progress).to_csv(
+        f"training_{MODEL_NAME}_{RUNTIME}.csv", index=False
+    )
+    if DISPLAY_STATS_ON_EPOCH:
+        print(
+            f"Epoch {epoch + 1}/{EPOCHS}, Loss: {all}, BoxLoss: {abl}, ClassLoss: {acl}, val_map50-90: {map5090}"
+        )
 
 
 train_state_dict = bench_train.model.state_dict()  # type: ignore
@@ -119,36 +171,38 @@ bench_pred.model.load_state_dict(train_state_dict)  # type: ignore
 model_pred_config = bench_pred.config
 bench_pred = bench_pred.cuda()
 
-val_dataset = create_dataset_custom(
-    name="val",
-    img_dir=DATA_CAR_DD_DIR / "images" / "val",
-    ann_file=DATA_CAR_DD_DIR / "instances_val.json",
+test_dataset = create_dataset_custom(
+    name="test",
+    img_dir=DATA_CAR_DD_DIR / "images" / "test",
+    ann_file=DATA_CAR_DD_DIR / "instances_test.json",
 )
 
-input_config = resolve_input_config({}, model_pred_config)
-loader = create_loader(
-    val_dataset,
-    input_size=input_config["input_size"],
+test_input_config = resolve_input_config({}, model_pred_config)
+test_loader = create_loader(
+    test_dataset,
+    input_size=test_input_config["input_size"],
     batch_size=BATCH_SIZE,
     use_prefetcher=True,
-    interpolation=input_config["interpolation"],
-    mean=input_config["mean"],
-    std=input_config["std"],
+    interpolation=test_input_config["interpolation"],
+    mean=test_input_config["mean"],
+    std=test_input_config["std"],
     num_workers=4,
     pin_mem=False,
 )
-evaluator = create_evaluator("coco", val_dataset, pred_yxyx=False)
+evaluator = create_evaluator("coco", test_dataset, pred_yxyx=False)
 bench_pred.eval()
 
 
 with torch.no_grad():
-    for i, (input, target) in enumerate(loader):
+    for i, (input, target) in enumerate(test_loader):
         output = bench_pred(input, img_info=target)
         evaluator.add_predictions(output, target)
 
         if i % 10 == 0:
-            print(f"Eval {i}/{len(loader)}")
+            print(f"Eval {i}/{len(test_loader)}")
 
 metrics = evaluator.evaluate()
 print(metrics)
-cpkl.dump(metrics, open(f"{MODEL_NAME}_{RUNTIME}_metrics.cpkl", "wb"))
+
+with open(f"eval_{MODEL_NAME}_{RUNTIME}.json", "w") as f:
+    json.dump({"metrics": metrics}, f)
