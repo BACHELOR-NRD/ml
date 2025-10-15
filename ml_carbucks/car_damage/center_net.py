@@ -1,6 +1,7 @@
 from collections import defaultdict
 import datetime as dt
 from pathlib import Path
+from tqdm import tqdm
 
 import pandas as pd
 import torch
@@ -12,13 +13,12 @@ from torchvision.models import resnet50
 from effdet.data import create_loader
 
 from ml_carbucks.utils.coco import CocoStatsEvaluator, create_dataset_custom
-from ml_carbucks.utils.inference import plot_img_pred  # noqa F401
 
 
 IMG_SIZE = 320
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 NUM_CLASSES = 3
-EPOCHS = 300
+EPOCHS = 500
 DATASET_LIMIT = None
 RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
 MODEL_NAME = "resnet50"
@@ -99,6 +99,7 @@ def decode_predictions(preds, conf_thresh=0.5, stride=32, K=100, nms_kernel=3):
     heatmap, wh, offset = preds["heatmap"], preds["wh"], preds["offset"]
     batch, cat, height, width = heatmap.size()
 
+    preds_device = heatmap.device
     # --- NMS on heatmap ---
     pooled = F.max_pool2d(
         heatmap, kernel_size=nms_kernel, stride=1, padding=nms_kernel // 2
@@ -145,9 +146,9 @@ def decode_predictions(preds, conf_thresh=0.5, stride=32, K=100, nms_kernel=3):
 
     if len(boxes_list) == 0:
         return (
-            torch.empty((0, 4)),
-            torch.empty((0,)),
-            torch.empty((0,), dtype=torch.int),
+            torch.empty((0, 4)).to(preds_device),
+            torch.empty((0,)).to(preds_device),
+            torch.empty((0,), dtype=torch.int).to(preds_device),
         )
 
     boxes = torch.cat(boxes_list, dim=0)
@@ -236,12 +237,14 @@ stride = IMG_SIZE // target_h
 # Now in your training loop, use this stride / target_h / target_w
 training_progress = defaultdict(list)
 COMPUTE_CYCLE = 3
-CONFIDENCE_THRESHOLD = 0.3
-model.train()
+CONFIDENCE_THRESHOLD = 0.2
 for epoch in range(EPOCHS):
     DO_ADDITIONAL_COMPUTE = (epoch + 1) % COMPUTE_CYCLE == 0 or epoch == 0
     val_stats = [-1] * 12
-    for imgs, targets in train_loader:
+    model.train()
+    for imgs, targets in tqdm(
+        train_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Training batches"
+    ):
         imgs = imgs.to(device)
 
         # Split targets and encode using precomputed stride/size
@@ -272,43 +275,40 @@ for epoch in range(EPOCHS):
     if DO_ADDITIONAL_COMPUTE:
         model.eval()
         with torch.no_grad():
-            for val_imgs, val_targets in val_loader:
+            for val_imgs, val_targets in tqdm(
+                val_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Validation batches"
+            ):
                 val_imgs = val_imgs.to(device)
 
                 val_preds = model(val_imgs)
 
-                val_boxes, val_scores, val_labels, val_detections = (
-                    torch.zeros((0, 4)),
-                    torch.zeros((0,)),
-                    torch.zeros((0,), dtype=torch.int),
-                    torch.zeros((0, 6)),
-                )
-
+                # NOTE: IMPORTANT | This solution is very not efficient but the only one that works for now
+                # NOT SURE IF IT WORKS THO
                 for i in range(val_imgs.shape[0]):
+
                     boxes_i, scores_i, labels_i = decode_predictions(
                         {k: v[i : i + 1] for k, v in val_preds.items()},
-                        conf_thresh=CONFIDENCE_THRESHOLD,
+                        conf_thresh=0.0,  # NOTE: IMPORTANT | to keep all predictions here
                         stride=stride,
                     )
-                    val_boxes = torch.cat((val_boxes, boxes_i), dim=0)
-                    val_scores = torch.cat((val_scores, scores_i), dim=0)
-                    val_labels = torch.cat((val_labels, labels_i), dim=0)
-                    val_detections = torch.cat(
-                        (
-                            val_detections,
-                            torch.cat(
-                                (
-                                    boxes_i,
-                                    scores_i.unsqueeze(1),
-                                    labels_i.unsqueeze(1).float(),
-                                ),
-                                dim=1,
-                            ),
-                        ),
-                        dim=0,
+
+                    val_img_detections = (
+                        torch.cat(
+                            [
+                                boxes_i,
+                                scores_i.unsqueeze(-1),
+                                labels_i.unsqueeze(-1).float(),
+                            ],
+                            dim=-1,
+                        )
+                        .to(device)
+                        .unsqueeze(0)
                     )
 
-                val_evaluator.add_predictions(val_detections, val_targets)
+                    val_evaluator.add_predictions(
+                        val_img_detections,
+                        {k: v[i : i + 1] for k, v in val_targets.items()},
+                    )
 
         val_stats = val_evaluator.evaluate()
         val_stats = [round(s, 4) for s in val_stats]
