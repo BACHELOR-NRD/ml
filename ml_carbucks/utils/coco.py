@@ -4,7 +4,7 @@ import datetime as dt
 from pathlib import Path
 from copy import deepcopy
 from tempfile import NamedTemporaryFile
-from typing import List, Union, cast
+from typing import List, Optional, Union, cast
 from collections import OrderedDict
 
 import torch
@@ -54,9 +54,10 @@ def create_dataset_custom(
     name: str,
     img_dir: Union[str, Path],
     ann_file: Union[str, Path],
-    limit: int = -1,
+    limit: Optional[int] = None,
     limit_mode: str = "first",
     seed: int | None = None,
+    use_xyxy: bool = True,
 ):
     """
     Create a COCO dataset with optional limiting of the number of images.
@@ -81,7 +82,7 @@ def create_dataset_custom(
 
     datasets = OrderedDict()
     dataset_cfg = Coco2017Cfg()
-    parser = CocoParserCfg(ann_filename=str(ann_file))
+    parser = CocoParserCfg(ann_filename=str(ann_file), bbox_yxyx=(not use_xyxy))
     dataset_cls = DetectionDatset
     dataset = dataset_cls(
         data_dir=img_dir,

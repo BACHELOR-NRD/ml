@@ -19,6 +19,15 @@
             "program": "${workspaceFolder}/ml_carbucks/car_damage/efficient_det.py",
             "console": "internalConsole",
             "justMyCode": false
-        }
+        },
+        {
+            "name": "CenterNet Train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ml_carbucks/car_damage/center_net.py",
+            "console": "internalConsole",
+            "justMyCode": false
+        },
+
     ]
 }

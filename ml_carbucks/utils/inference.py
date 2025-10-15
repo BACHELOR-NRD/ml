@@ -1,3 +1,4 @@
+from typing_extensions import Literal
 import uuid
 from copy import deepcopy
 from typing import Union
@@ -8,7 +9,10 @@ from matplotlib.patches import Rectangle
 
 
 def plot_img_pred(
-    img_tensor, bboxes, yxyx: bool = True, save_dir: Union[str, bool] = False
+    img_tensor,
+    bboxes,
+    coords: Literal["xyxy", "yxyx", "xywh"],
+    save_dir: Union[str, bool] = False,
 ):
     """
     Plot the predicted bounding boxes on the image.
@@ -23,6 +27,9 @@ def plot_img_pred(
     """
 
     plt.figure(figsize=(10, 10))
+    if type(img_tensor) is str:
+        img_tensor = plt.imread(img_tensor)
+        img_tensor = np.transpose(img_tensor, (2, 0, 1))
     try:
         img_tensor = deepcopy(img_tensor).cpu().numpy()
     except Exception:
@@ -35,10 +42,16 @@ def plot_img_pred(
 
     plt.imshow(np.transpose(img_tensor, (1, 2, 0)))
     for bbox in bboxes:
-        if yxyx is True:
+        if coords == "yxyx":
             ymin, xmin, ymax, xmax = bbox
-        else:
+        elif coords == "xyxy":
             xmin, ymin, xmax, ymax = bbox
+        elif coords == "xywh":
+            xmin, ymin, w, h = bbox
+            xmax = xmin + w
+            ymax = ymin + h
+        else:
+            raise ValueError("coords must be one of 'xyxy', 'yxyx', or 'xywh'")
 
         x = xmin
         y = ymin
