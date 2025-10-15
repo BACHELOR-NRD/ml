@@ -8,7 +8,7 @@ from effdet.data import resolve_input_config
 from effdet.anchors import Anchors, AnchorLabeler
 
 from ml_carbucks import DATA_CAR_DD_DIR
-from ml_carbucks.utils import CocoStatsEvaluator, create_dataset_custom
+from ml_carbucks.utils.coco import CocoStatsEvaluator, create_dataset_custom
 
 # CONFIGURATION
 
