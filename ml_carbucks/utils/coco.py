@@ -1,7 +1,8 @@
-from copy import deepcopy
 import os
 import json
+import datetime as dt
 from pathlib import Path
+from copy import deepcopy
 from tempfile import NamedTemporaryFile
 from typing import List, Union, cast
 from collections import OrderedDict
@@ -86,6 +87,17 @@ def create_dataset_custom(
         data_dir=img_dir,
         parser=create_parser(dataset_cfg.parser, cfg=parser),
     )
+
+    # NOTE: this is a fix for missing 'info' field in some COCO annotations
+    if "info" not in dataset.parser.coco.dataset:  # type: ignore
+        dataset.parser.coco.dataset["info"] = {  # type: ignore
+            "description": "unknown",
+            "url": "unknown",
+            "version": "0.1",
+            "year": dt.datetime.now().year,
+            "contributor": "unknown",
+            "date_created": "unknown",
+        }
 
     # If limit is set and positive, create a FilteredDataset so the loader
     # only iterates over up to `limit` items. This limits images inside the dataset.

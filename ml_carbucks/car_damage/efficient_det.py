@@ -5,7 +5,7 @@ from tqdm import tqdm
 from collections import defaultdict
 
 import pandas as pd
-from effdet import create_model, create_loader, create_evaluator
+from effdet import create_model, create_loader
 from effdet.data import resolve_input_config
 from effdet.anchors import Anchors, AnchorLabeler
 
@@ -17,11 +17,11 @@ from ml_carbucks.utils.coco import CocoStatsEvaluator, create_dataset_custom
 BATCH_SIZE = 16
 IMG_SIZE = 320
 NUM_CLASSES = None
-EPOCHS = 30
+EPOCHS = 100
 FREEZE_BACKBONE = False
-LR = 1e-4
+LR = 5e-4
 extra_args = dict(image_size=(IMG_SIZE, IMG_SIZE))
-MODEL_NAME = "tf_efficientdet_d2"
+MODEL_NAME = "tf_efficientdet_d4"
 RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
@@ -201,20 +201,17 @@ test_loader = create_loader(
     num_workers=4,
     pin_mem=False,
 )
-evaluator = create_evaluator("coco", test_dataset, pred_yxyx=False)
+evaluator = CocoStatsEvaluator(test_dataset, distributed=False, pred_yxyx=False)
 bench_pred.eval()
 
 
 with torch.no_grad():
-    for i, (input, target) in enumerate(test_loader):
+    for input, target in tqdm(test_loader):
         output = bench_pred(input, img_info=target)
         evaluator.add_predictions(output, target)
 
-        if i % 10 == 0:
-            print(f"Eval {i}/{len(test_loader)}")
-
-metrics = evaluator.evaluate()
-print(metrics)
+stats = evaluator.evaluate()
+print(stats)
 
 with open(f"eval_{MODEL_NAME}_{RUNTIME}.json", "w") as f:
-    json.dump({"metrics": metrics}, f)
+    json.dump({"metrics": stats}, f)
