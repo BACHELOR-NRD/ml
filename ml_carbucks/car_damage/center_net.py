@@ -11,8 +11,12 @@ import torch.nn.functional as F
 import torchvision
 from torchvision.models import resnet50
 from effdet.data import create_loader
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
-from ml_carbucks.utils.coco import CocoStatsEvaluator, create_dataset_custom
+from ml_carbucks.utils.coco import (  # noqa: F401
+    CocoStatsEvaluator,
+    create_dataset_custom,
+)
 
 
 IMG_SIZE = 320
@@ -55,6 +59,11 @@ class CenterNetHead(nn.Module):
 class CenterNet(nn.Module):
     def __init__(self, num_classes=3, backbone_name="resnet50", pretrained=True):
         super().__init__()
+
+        assert (
+            backbone_name == "resnet50"
+        ), "Only resnet50 backbone is supported in this implementation."
+
         backbone = resnet50(weights="IMAGENET1K_V1" if pretrained else None)
         self.backbone = nn.Sequential(*list(backbone.children())[:-2])  # C5 feature map
         self.head = CenterNetHead(2048, num_classes)
@@ -224,7 +233,7 @@ val_loader = create_loader(
     num_workers=4,
     pin_mem=False,
 )
-val_evaluator = CocoStatsEvaluator(dataset=val_dataset, pred_yxyx=False)
+# val_evaluator = CocoStatsEvaluator(dataset=val_dataset, pred_yxyx=False)
 
 
 # Determine output size / stride once
@@ -238,6 +247,7 @@ stride = IMG_SIZE // target_h
 training_progress = defaultdict(list)
 COMPUTE_CYCLE = 3
 CONFIDENCE_THRESHOLD = 0.2
+
 for epoch in range(EPOCHS):
     DO_ADDITIONAL_COMPUTE = (epoch + 1) % COMPUTE_CYCLE == 0 or epoch == 0
     val_stats = [-1] * 12
@@ -274,6 +284,9 @@ for epoch in range(EPOCHS):
 
     if DO_ADDITIONAL_COMPUTE:
         model.eval()
+        all_gts = []
+        all_preds = []
+        metric = MeanAveragePrecision()
         with torch.no_grad():
             for val_imgs, val_targets in tqdm(
                 val_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Validation batches"
@@ -282,46 +295,50 @@ for epoch in range(EPOCHS):
 
                 val_preds = model(val_imgs)
 
-                # NOTE: IMPORTANT | This solution is very not efficient but the only one that works for now
-                # NOT SURE IF IT WORKS THO
                 for i in range(val_imgs.shape[0]):
-
-                    boxes_i, scores_i, labels_i = decode_predictions(
+                    val_boxes_i, val_scores_i, val_labels_i = decode_predictions(
                         {k: v[i : i + 1] for k, v in val_preds.items()},
-                        conf_thresh=0.0,  # NOTE: IMPORTANT | to keep all predictions here
+                        conf_thresh=0.5,
                         stride=stride,
+                        K=100,
                     )
 
-                    val_img_detections = (
-                        torch.cat(
-                            [
-                                boxes_i,
-                                scores_i.unsqueeze(-1),
-                                labels_i.unsqueeze(-1).float(),
-                            ],
-                            dim=-1,
+                    gt_boxes = val_targets["bbox"][i].cpu()
+                    gt_labels = val_targets["cls"][i].cpu()
+                    # filter out -1 labels (no object)
+                    mask = gt_labels != -1
+                    gt_boxes = gt_boxes[mask]
+                    gt_labels = gt_labels[mask]
+                    all_gts.append({"boxes": gt_boxes, "labels": gt_labels.long()})
+                    if val_boxes_i.shape[0] == 0:
+                        all_preds.append(
+                            {
+                                "boxes": torch.zeros((0, 4), dtype=torch.float32),
+                                "scores": torch.zeros((0,), dtype=torch.float32),
+                                "labels": torch.zeros((0,), dtype=torch.int64),
+                            }
                         )
-                        .to(device)
-                        .unsqueeze(0)
-                    )
-
-                    val_evaluator.add_predictions(
-                        val_img_detections,
-                        {k: v[i : i + 1] for k, v in val_targets.items()},
-                    )
-
-        val_stats = val_evaluator.evaluate()
-        val_stats = [round(s, 4) for s in val_stats]
-        val_evaluator.reset()
+                    else:
+                        all_preds.append(
+                            {
+                                "boxes": val_boxes_i.cpu(),
+                                "scores": val_scores_i.cpu(),
+                                "labels": val_labels_i.cpu().long(),
+                            }
+                        )
+        metric.update(all_preds, all_gts)
+        val_res = metric.compute()
 
     training_progress["epoch"].append(epoch + 1)
     training_progress["loss"].append(loss.item())  # type: ignore
     training_progress["hm_loss"].append(hm_loss.item())  # type: ignore
     training_progress["wh_loss"].append(wh_loss.item())  # type: ignore
     training_progress["off_loss"].append(off_loss.item())  # type: ignore
-    training_progress["val_mAP50-90"].append(val_stats[0])
-    training_progress["val_mAP50"].append(val_stats[1])
-    training_progress["val_mAR50-95"].append(val_stats[8])
+    training_progress["val_mAP50-90"].append(-1)
+    training_progress["val_mAP50"].append(
+        val_res["map_50"].item() if DO_ADDITIONAL_COMPUTE else -1  # type: ignore
+    )
+    training_progress["val_mAR50-95"].append(-1)
     pd.DataFrame(training_progress).to_csv(
         f"training_{MODEL_NAME}_{RUNTIME}.csv", index=False
     )
