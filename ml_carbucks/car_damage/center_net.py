@@ -22,7 +22,7 @@ from ml_carbucks.utils.coco import (  # noqa: F401
 IMG_SIZE = 320
 BATCH_SIZE = 16
 NUM_CLASSES = 3
-EPOCHS = 500
+EPOCHS = 700
 DATASET_LIMIT = None
 RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
 MODEL_NAME = "resnet50"
@@ -176,7 +176,8 @@ def decode_predictions(preds, conf_thresh=0.5, stride=32, K=100, nms_kernel=3):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model = CenterNet(num_classes=3, backbone_name=MODEL_NAME, pretrained=True).to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-4)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
 
 def encode_targets(boxes, labels, output_size, num_classes, stride):
@@ -245,8 +246,8 @@ stride = IMG_SIZE // target_h
 
 # Now in your training loop, use this stride / target_h / target_w
 training_progress = defaultdict(list)
-COMPUTE_CYCLE = 3
-CONFIDENCE_THRESHOLD = 0.2
+COMPUTE_CYCLE = 1
+CONFIDENCE_THRESHOLD = 0.1
 
 for epoch in range(EPOCHS):
     DO_ADDITIONAL_COMPUTE = (epoch + 1) % COMPUTE_CYCLE == 0 or epoch == 0
@@ -281,6 +282,8 @@ for epoch in range(EPOCHS):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
+    scheduler.step()
 
     if DO_ADDITIONAL_COMPUTE:
         model.eval()
@@ -334,15 +337,27 @@ for epoch in range(EPOCHS):
     training_progress["hm_loss"].append(hm_loss.item())  # type: ignore
     training_progress["wh_loss"].append(wh_loss.item())  # type: ignore
     training_progress["off_loss"].append(off_loss.item())  # type: ignore
-    training_progress["val_mAP50-90"].append(-1)
-    training_progress["val_mAP50"].append(
-        val_res["map_50"].item() if DO_ADDITIONAL_COMPUTE else -1  # type: ignore
-    )
-    training_progress["val_mAR50-95"].append(-1)
+
+    if DO_ADDITIONAL_COMPUTE:
+        training_progress["val_map"].append(val_res["map"].item())  # type: ignore
+        training_progress["val_map_50"].append(val_res["map_50"].item())  # type: ignore
+        training_progress["val_map_75"].append(val_res["map_75"].item())  # type: ignore
+    else:
+        training_progress["val_map"].append(-1)
+        training_progress["val_map_50"].append(-1)
+        training_progress["val_map_75"].append(-1)
+
     pd.DataFrame(training_progress).to_csv(
         f"training_{MODEL_NAME}_{RUNTIME}.csv", index=False
     )
     if DO_ADDITIONAL_COMPUTE:
         print(
-            f"Epoch {epoch + 1} | Loss: {loss.item():.4f} | hm: {hm_loss.item():.4f} | wh: {wh_loss.item():.4f} | off: {off_loss.item():.4f} | val_mAP50-90: {val_stats[0]} | val_mAP50: {val_stats[1]} | val_mAR50-95: {val_stats[8]}"  # type: ignore
+            f"Epoch {epoch + 1}"
+            f" | Loss: {training_progress['loss'][-1]}"
+            f" | hm: {training_progress['hm_loss'][-1]}"
+            f" | wh: {training_progress['wh_loss'][-1]}"
+            f" | off: {training_progress['off_loss'][-1]}"
+            f" | val_map: {training_progress['val_map'][-1]}"
+            f" | val_map_50: {training_progress['val_map_50'][-1]}"
+            f" | val_map_75: {training_progress['val_map_75'][-1]}"
         )
