@@ -13,6 +13,7 @@ def plot_img_pred(
     bboxes,
     coords: Literal["xyxy", "yxyx", "xywh"],
     save_dir: Union[str, bool] = False,
+    figsize: tuple = (10, 10),
 ):
     """
     Plot the predicted bounding boxes on the image.
@@ -26,12 +27,12 @@ def plot_img_pred(
                   If False, the plot will not be saved.
     """
 
-    plt.figure(figsize=(10, 10))
+    plt.figure(figsize=figsize)
     if type(img_tensor) is str:
         img_tensor = plt.imread(img_tensor)
         img_tensor = np.transpose(img_tensor, (2, 0, 1))
     try:
-        img_tensor = deepcopy(img_tensor).cpu().numpy()
+        img_tensor = deepcopy(img_tensor).cpu().numpy()  # type: ignore
     except Exception:
         pass
 
