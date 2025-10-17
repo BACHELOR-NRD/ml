@@ -1,17 +1,19 @@
+import time
 from collections import defaultdict
 import datetime as dt
 from pathlib import Path
-from tqdm import tqdm
 
+from tqdm import tqdm
 import pandas as pd
 import torch
 import torch.nn as nn
-from torch import optim
+from torch import optim  # noqa: F401
 import torch.nn.functional as F
 import torchvision
-from torchvision.models import resnet50
+from torchvision.models import resnet50, resnet101
 from effdet.data import create_loader
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
+from torchvision.ops import FeaturePyramidNetwork
 
 from ml_carbucks.utils.coco import (  # noqa: F401
     CocoStatsEvaluator,
@@ -25,26 +27,75 @@ NUM_CLASSES = 3
 EPOCHS = 700
 DATASET_LIMIT = None
 RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-MODEL_NAME = "resnet50"
+MODEL_NAME = "resnet101"
+
+# DEPRECATED simpler head version
+
+# class CenterNetHead(nn.Module):
+#     def __init__(self, in_channels, num_classes):
+#         super().__init__()
+#         # Shared conv
+#         self.shared = nn.Sequential(
+#             nn.Conv2d(in_channels, 256, 3, padding=1, bias=False),
+#             nn.BatchNorm2d(256),
+#             nn.ReLU(inplace=True),
+#         )
+#         # Separate heads
+#         self.heatmap = nn.Conv2d(256, num_classes, 1)
+#         self.wh = nn.Conv2d(256, 2, 1)
+#         self.offset = nn.Conv2d(256, 2, 1)
+#         self._init_weights()
+
+#     def _init_weights(self):
+#         # Heatmap bias init -> lower confidence initially
+#         self.heatmap.bias.data.fill_(-2.19)  # type: ignore
+
+#     def forward(self, x):
+#         feat = self.shared(x)
+#         return {
+#             "heatmap": torch.sigmoid(self.heatmap(feat)),
+#             "wh": self.wh(feat),
+#             "offset": self.offset(feat),
+#         }
 
 
+# class CenterNet(nn.Module):
+#     def __init__(self, num_classes=3, backbone_name="resnet50", pretrained=True):
+#         super().__init__()
+
+#         assert (
+#             backbone_name == "resnet50"
+#         ), "Only resnet50 backbone is supported in this implementation."
+
+#         backbone = resnet50(weights="IMAGENET1K_V1" if pretrained else None)
+#         self.backbone = nn.Sequential(*list(backbone.children())[:-2])  # C5 feature map
+#         self.head = CenterNetHead(2048, num_classes)
+
+#     def forward(self, x):
+#         feat = self.backbone(x)
+#         out = self.head(feat)
+#         return out
+
+
+# --- Head ---
 class CenterNetHead(nn.Module):
     def __init__(self, in_channels, num_classes):
         super().__init__()
-        # Shared conv
         self.shared = nn.Sequential(
             nn.Conv2d(in_channels, 256, 3, padding=1, bias=False),
             nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, padding=1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
         )
-        # Separate heads
         self.heatmap = nn.Conv2d(256, num_classes, 1)
         self.wh = nn.Conv2d(256, 2, 1)
         self.offset = nn.Conv2d(256, 2, 1)
         self._init_weights()
 
     def _init_weights(self):
-        # Heatmap bias init -> lower confidence initially
+        # Lower initial confidence for heatmap
         self.heatmap.bias.data.fill_(-2.19)  # type: ignore
 
     def forward(self, x):
@@ -56,22 +107,52 @@ class CenterNetHead(nn.Module):
         }
 
 
+# --- Backbone + FPN ---
 class CenterNet(nn.Module):
-    def __init__(self, num_classes=3, backbone_name="resnet50", pretrained=True):
+    def __init__(self, backbone_name: str, num_classes=3, pretrained=True):
         super().__init__()
+        if backbone_name == "resnet50":
+            backbone = resnet50(weights="IMAGENET1K_V1" if pretrained else None)
+        elif backbone_name == "resnet101":
+            backbone = resnet101(weights="IMAGENET1K_V1" if pretrained else None)
+        else:
+            raise ValueError("Unsupported backbone")
+        # Extract intermediate feature maps (C3, C4, C5)
+        # These correspond to strides 8, 16, 32
+        self.layer1 = nn.Sequential(
+            backbone.conv1,
+            backbone.bn1,
+            backbone.relu,
+            backbone.maxpool,
+            backbone.layer1,
+        )  # -> C2 (1/4)
+        self.layer2 = backbone.layer2  # -> C3 (1/8)
+        self.layer3 = backbone.layer3  # -> C4 (1/16)
+        self.layer4 = backbone.layer4  # -> C5 (1/32)
 
-        assert (
-            backbone_name == "resnet50"
-        ), "Only resnet50 backbone is supported in this implementation."
+        # FPN: combines C3, C4, C5 into rich multi-scale features
+        self.fpn = FeaturePyramidNetwork(
+            in_channels_list=[512, 1024, 2048],  # true channel sizes for resnet50
+            out_channels=256,
+        )
 
-        backbone = resnet50(weights="IMAGENET1K_V1" if pretrained else None)
-        self.backbone = nn.Sequential(*list(backbone.children())[:-2])  # C5 feature map
-        self.head = CenterNetHead(2048, num_classes)
+        # Final CenterNet head
+        self.head = CenterNetHead(256, num_classes)
 
     def forward(self, x):
-        feat = self.backbone(x)
-        out = self.head(feat)
-        return out
+        # Extract feature maps
+        c2 = self.layer1(x)
+        c3 = self.layer2(c2)
+        c4 = self.layer3(c3)
+        c5 = self.layer4(c4)
+
+        # Build FPN features
+        features = self.fpn({"c3": c3, "c4": c4, "c5": c5})
+
+        # Use highest resolution FPN output for CenterNet head
+        fpn_out = features["c3"]  # usually the 1/8 scale feature
+
+        return self.head(fpn_out)
 
 
 def focal_loss(pred, gt):
@@ -176,7 +257,7 @@ def decode_predictions(preds, conf_thresh=0.5, stride=32, K=100, nms_kernel=3):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model = CenterNet(num_classes=3, backbone_name=MODEL_NAME, pretrained=True).to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-2)
+optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-2)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
 
@@ -253,9 +334,8 @@ for epoch in range(EPOCHS):
     DO_ADDITIONAL_COMPUTE = (epoch + 1) % COMPUTE_CYCLE == 0 or epoch == 0
     val_stats = [-1] * 12
     model.train()
-    for imgs, targets in tqdm(
-        train_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Training batches"
-    ):
+    start_time = time.time()
+    for imgs, targets in tqdm(train_loader, desc=f"E {epoch + 1}/{EPOCHS} | Tb"):
         imgs = imgs.to(device)
 
         # Split targets and encode using precomputed stride/size
@@ -292,7 +372,7 @@ for epoch in range(EPOCHS):
         metric = MeanAveragePrecision()
         with torch.no_grad():
             for val_imgs, val_targets in tqdm(
-                val_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Validation batches"
+                val_loader, desc=f"E {epoch + 1}/{EPOCHS} | Vb"
             ):
                 val_imgs = val_imgs.to(device)
 
@@ -332,7 +412,9 @@ for epoch in range(EPOCHS):
         metric.update(all_preds, all_gts)
         val_res = metric.compute()
 
+    end_time = time.time()
     training_progress["epoch"].append(epoch + 1)
+    training_progress["time"].append(round(end_time - start_time))
     training_progress["loss"].append(loss.item())  # type: ignore
     training_progress["hm_loss"].append(hm_loss.item())  # type: ignore
     training_progress["wh_loss"].append(wh_loss.item())  # type: ignore
