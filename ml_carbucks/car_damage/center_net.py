@@ -22,63 +22,64 @@ from ml_carbucks.utils.coco import (  # noqa: F401
 
 
 IMG_SIZE = 320
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 NUM_CLASSES = 3
 EPOCHS = 700
 DATASET_LIMIT = None
 RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-MODEL_NAME = "resnet101"
+MODEL_NAME = "resnet50"  # resnet50 or resnet101
 
 # DEPRECATED simpler head version
 
-# class CenterNetHead(nn.Module):
-#     def __init__(self, in_channels, num_classes):
-#         super().__init__()
-#         # Shared conv
-#         self.shared = nn.Sequential(
-#             nn.Conv2d(in_channels, 256, 3, padding=1, bias=False),
-#             nn.BatchNorm2d(256),
-#             nn.ReLU(inplace=True),
-#         )
-#         # Separate heads
-#         self.heatmap = nn.Conv2d(256, num_classes, 1)
-#         self.wh = nn.Conv2d(256, 2, 1)
-#         self.offset = nn.Conv2d(256, 2, 1)
-#         self._init_weights()
 
-#     def _init_weights(self):
-#         # Heatmap bias init -> lower confidence initially
-#         self.heatmap.bias.data.fill_(-2.19)  # type: ignore
+class SimpleCenterNetHead(nn.Module):
+    def __init__(self, in_channels, num_classes):
+        super().__init__()
+        # Shared conv
+        self.shared = nn.Sequential(
+            nn.Conv2d(in_channels, 256, 3, padding=1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+        )
+        # Separate heads
+        self.heatmap = nn.Conv2d(256, num_classes, 1)
+        self.wh = nn.Conv2d(256, 2, 1)
+        self.offset = nn.Conv2d(256, 2, 1)
+        self._init_weights()
 
-#     def forward(self, x):
-#         feat = self.shared(x)
-#         return {
-#             "heatmap": torch.sigmoid(self.heatmap(feat)),
-#             "wh": self.wh(feat),
-#             "offset": self.offset(feat),
-#         }
+    def _init_weights(self):
+        # Heatmap bias init -> lower confidence initially
+        self.heatmap.bias.data.fill_(-2.19)  # type: ignore
+
+    def forward(self, x):
+        feat = self.shared(x)
+        return {
+            "heatmap": torch.sigmoid(self.heatmap(feat)),
+            "wh": self.wh(feat),
+            "offset": self.offset(feat),
+        }
 
 
-# class CenterNet(nn.Module):
-#     def __init__(self, num_classes=3, backbone_name="resnet50", pretrained=True):
-#         super().__init__()
+class SimpleCenterNet(nn.Module):
+    def __init__(self, num_classes=3, backbone_name="resnet50", pretrained=True):
+        super().__init__()
 
-#         assert (
-#             backbone_name == "resnet50"
-#         ), "Only resnet50 backbone is supported in this implementation."
+        assert (
+            backbone_name == "resnet50"
+        ), "Only resnet50 backbone is supported in this implementation."
 
-#         backbone = resnet50(weights="IMAGENET1K_V1" if pretrained else None)
-#         self.backbone = nn.Sequential(*list(backbone.children())[:-2])  # C5 feature map
-#         self.head = CenterNetHead(2048, num_classes)
+        backbone = resnet50(weights="IMAGENET1K_V1" if pretrained else None)
+        self.backbone = nn.Sequential(*list(backbone.children())[:-2])  # C5 feature map
+        self.head = SimpleCenterNetHead(2048, num_classes)
 
-#     def forward(self, x):
-#         feat = self.backbone(x)
-#         out = self.head(feat)
-#         return out
+    def forward(self, x):
+        feat = self.backbone(x)
+        out = self.head(feat)
+        return out
 
 
 # --- Head ---
-class CenterNetHead(nn.Module):
+class AdvancedCenterNetHead(nn.Module):
     def __init__(self, in_channels, num_classes):
         super().__init__()
         self.shared = nn.Sequential(
@@ -108,7 +109,7 @@ class CenterNetHead(nn.Module):
 
 
 # --- Backbone + FPN ---
-class CenterNet(nn.Module):
+class AdvancedCenterNet(nn.Module):
     def __init__(self, backbone_name: str, num_classes=3, pretrained=True):
         super().__init__()
         if backbone_name == "resnet50":
@@ -137,7 +138,7 @@ class CenterNet(nn.Module):
         )
 
         # Final CenterNet head
-        self.head = CenterNetHead(256, num_classes)
+        self.head = AdvancedCenterNetHead(256, num_classes)
 
     def forward(self, x):
         # Extract feature maps
@@ -256,9 +257,27 @@ def decode_predictions(preds, conf_thresh=0.5, stride=32, K=100, nms_kernel=3):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = CenterNet(num_classes=3, backbone_name=MODEL_NAME, pretrained=True).to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=1e-2)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
+model = SimpleCenterNet(num_classes=3, backbone_name=MODEL_NAME, pretrained=True).to(
+    device
+)
+# model = AdvancedCenterNet(
+#     backbone_name=MODEL_NAME, num_classes=NUM_CLASSES, pretrained=True
+# ).to(device)
+optimizer = torch.optim.AdamW(model.parameters(), lr=5e-3, weight_decay=1e-4)
+# scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
+scheduler = None
+
+
+def draw_gaussian(heatmap, cx, cy, sigma=1.0):
+    """Draw a 2D Gaussian on the heatmap at subpixel location cx, cy"""
+    w, h = heatmap.shape[1], heatmap.shape[0]
+
+    x = torch.arange(0, w, device=heatmap.device).float()
+    y = torch.arange(0, h, device=heatmap.device).float().view(-1, 1)
+
+    g = torch.exp(-((x - cx) ** 2 + (y - cy) ** 2) / (2 * sigma**2))
+    heatmap = torch.max(heatmap, g)
+    return heatmap
 
 
 def encode_targets(boxes, labels, output_size, num_classes, stride):
@@ -268,7 +287,6 @@ def encode_targets(boxes, labels, output_size, num_classes, stride):
 
     for box, cls in zip(boxes, labels):
         x1, y1, x2, y2 = box
-
         cx = (x1 + x2) / 2 / stride
         cy = (y1 + y2) / 2 / stride
         w = (x2 - x1) / stride
@@ -277,6 +295,31 @@ def encode_targets(boxes, labels, output_size, num_classes, stride):
 
         # mark the heatmap (you can add a small gaussian, here just set 1)
         heatmap[cls, cy_int, cx_int] = 1
+        wh[:, cy_int, cx_int] = torch.tensor([w, h], device=device)
+        offset[:, cy_int, cx_int] = torch.tensor(
+            [cx - cx_int, cy - cy_int], device=device
+        )
+
+    return {"heatmap": heatmap, "wh": wh, "offset": offset}
+
+
+def encode_targets_gaussian(boxes, labels, output_size, num_classes, stride, sigma=1.2):
+    heatmap = torch.zeros((num_classes, *output_size), device=device)
+    wh = torch.zeros((2, *output_size), device=device)
+    offset = torch.zeros((2, *output_size), device=device)
+
+    H, W = output_size
+    for box, cls in zip(boxes, labels):
+        x1, y1, x2, y2 = box
+        cx = (x1 + x2) / 2 / stride
+        cy = (y1 + y2) / 2 / stride
+        w = (x2 - x1) / stride
+        h = (y2 - y1) / stride
+        cx_int, cy_int = int(cx), int(cy)
+
+        # draw gaussian on heatmap
+        heatmap[cls] = draw_gaussian(heatmap[cls], cx, cy, sigma=sigma)
+
         wh[:, cy_int, cx_int] = torch.tensor([w, h], device=device)
         offset[:, cy_int, cx_int] = torch.tensor(
             [cx - cx_int, cy - cy_int], device=device
@@ -363,7 +406,8 @@ for epoch in range(EPOCHS):
         loss.backward()
         optimizer.step()
 
-    scheduler.step()
+    if scheduler is not None:
+        scheduler.step()
 
     if DO_ADDITIONAL_COMPUTE:
         model.eval()
@@ -371,9 +415,7 @@ for epoch in range(EPOCHS):
         all_preds = []
         metric = MeanAveragePrecision()
         with torch.no_grad():
-            for val_imgs, val_targets in tqdm(
-                val_loader, desc=f"E {epoch + 1}/{EPOCHS} | Vb"
-            ):
+            for i, (val_imgs, val_targets) in enumerate(train_loader):
                 val_imgs = val_imgs.to(device)
 
                 val_preds = model(val_imgs)
@@ -381,7 +423,7 @@ for epoch in range(EPOCHS):
                 for i in range(val_imgs.shape[0]):
                     val_boxes_i, val_scores_i, val_labels_i = decode_predictions(
                         {k: v[i : i + 1] for k, v in val_preds.items()},
-                        conf_thresh=0.5,
+                        conf_thresh=CONFIDENCE_THRESHOLD,
                         stride=stride,
                         K=100,
                     )
@@ -415,15 +457,15 @@ for epoch in range(EPOCHS):
     end_time = time.time()
     training_progress["epoch"].append(epoch + 1)
     training_progress["time"].append(round(end_time - start_time))
-    training_progress["loss"].append(loss.item())  # type: ignore
-    training_progress["hm_loss"].append(hm_loss.item())  # type: ignore
-    training_progress["wh_loss"].append(wh_loss.item())  # type: ignore
-    training_progress["off_loss"].append(off_loss.item())  # type: ignore
+    training_progress["loss"].append(round(loss.item(), 2))  # type: ignore
+    training_progress["hm_loss"].append(round(hm_loss.item(), 2))  # type: ignore
+    training_progress["wh_loss"].append(round(wh_loss.item(), 2))  # type: ignore
+    training_progress["off_loss"].append(round(off_loss.item(), 2))  # type: ignore
 
     if DO_ADDITIONAL_COMPUTE:
-        training_progress["val_map"].append(val_res["map"].item())  # type: ignore
-        training_progress["val_map_50"].append(val_res["map_50"].item())  # type: ignore
-        training_progress["val_map_75"].append(val_res["map_75"].item())  # type: ignore
+        training_progress["val_map"].append(round(val_res["map"].item(), 2))  # type: ignore
+        training_progress["val_map_50"].append(round(val_res["map_50"].item(), 2))  # type: ignore
+        training_progress["val_map_75"].append(round(val_res["map_75"].item(), 2))  # type: ignore
     else:
         training_progress["val_map"].append(-1)
         training_progress["val_map_50"].append(-1)
