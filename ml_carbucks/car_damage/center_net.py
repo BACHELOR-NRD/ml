@@ -1,3 +1,14 @@
+"""
+This is not working out well.
+Hours spent trying to get CenterNet to work properly have not yielded good results.
+What is happening is that it is not
+
+Take this as a warning sign. If you consider trying to fix this then increment the hour counter.
+Hours spent: 37
+
+Damian
+"""
+
 import time
 from collections import defaultdict
 import datetime as dt
@@ -24,7 +35,7 @@ from ml_carbucks.utils.coco import (  # noqa: F401
 IMG_SIZE = 320
 BATCH_SIZE = 8
 NUM_CLASSES = 3
-EPOCHS = 700
+EPOCHS = 2000
 DATASET_LIMIT = None
 RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
 MODEL_NAME = "resnet50"  # resnet50 or resnet101
@@ -69,6 +80,7 @@ class SimpleCenterNet(nn.Module):
         ), "Only resnet50 backbone is supported in this implementation."
 
         backbone = resnet50(weights="IMAGENET1K_V1" if pretrained else None)
+
         self.backbone = nn.Sequential(*list(backbone.children())[:-2])  # C5 feature map
         self.head = SimpleCenterNetHead(2048, num_classes)
 
@@ -154,6 +166,77 @@ class AdvancedCenterNet(nn.Module):
         fpn_out = features["c3"]  # usually the 1/8 scale feature
 
         return self.head(fpn_out)
+
+
+class MediumCenterNetHead(nn.Module):
+    def __init__(self, in_channels, num_classes):
+        super().__init__()
+        # One light shared conv block instead of two
+        self.shared = nn.Sequential(
+            nn.Conv2d(in_channels, 128, 3, padding=1, bias=False),
+            # nn.BatchNorm2d(128),
+            nn.GroupNorm(32, 128),
+            nn.ReLU(inplace=True),
+        )
+        self.heatmap = nn.Conv2d(128, num_classes, 1)
+        self.wh = nn.Conv2d(128, 2, 1)
+        self.offset = nn.Conv2d(128, 2, 1)
+        self._init_weights()
+
+    def _init_weights(self):
+        # lower initial confidence for heatmap
+        nn.init.constant_(self.heatmap.bias, -2.19)  # type: ignore
+
+    def forward(self, x):
+        feat = self.shared(x)
+        return {
+            "heatmap": torch.sigmoid(self.heatmap(feat)),
+            "wh": self.wh(feat),
+            "offset": self.offset(feat),
+        }
+
+
+# --- Backbone (ResNet, no FPN) ---
+class MediumCenterNet(nn.Module):
+    def __init__(self, backbone_name="resnet50", num_classes=3, pretrained=True):
+        super().__init__()
+
+        if backbone_name == "resnet50":
+            backbone = resnet50(weights="IMAGENET1K_V2" if pretrained else None)
+            in_channels = 1024  # we’ll use C4
+        elif backbone_name == "resnet101":
+            backbone = resnet101(weights="IMAGENET1K_V2" if pretrained else None)
+            in_channels = 1024
+        else:
+            raise ValueError("Unsupported backbone")
+
+        # Keep up to layer3 (stride 16) — balance detail vs semantic info
+
+        self.backbone = nn.Sequential(
+            backbone.conv1,
+            backbone.bn1,
+            backbone.relu,
+            backbone.maxpool,
+            backbone.layer1,
+            backbone.layer2,
+            backbone.layer3,
+        )
+
+        # Reduce channels before head
+        self.reduce = nn.Sequential(
+            nn.Conv2d(in_channels, 256, 1, bias=False),
+            # nn.BatchNorm2d(256),
+            nn.GroupNorm(32, 256),
+            nn.ReLU(inplace=True),
+        )
+
+        self.head = MediumCenterNetHead(256, num_classes)
+
+    def forward(self, x):
+        feat = self.backbone(x)  # stride 16 features
+        feat = self.reduce(feat)  # channel compression
+        out = self.head(feat)
+        return out
 
 
 def focal_loss(pred, gt):
@@ -257,15 +340,50 @@ def decode_predictions(preds, conf_thresh=0.5, stride=32, K=100, nms_kernel=3):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-model = SimpleCenterNet(num_classes=3, backbone_name=MODEL_NAME, pretrained=True).to(
-    device
-)
+# model = SimpleCenterNet(num_classes=3, backbone_name=MODEL_NAME, pretrained=True).to(
+#     device
+# )
+
+FREEZE_BACKBONE = False
+
+
+model = MediumCenterNet(
+    backbone_name=MODEL_NAME,
+    num_classes=NUM_CLASSES,
+    pretrained=True,
+).to(device)
+
+
 # model = AdvancedCenterNet(
 #     backbone_name=MODEL_NAME, num_classes=NUM_CLASSES, pretrained=True
 # ).to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=5e-3, weight_decay=1e-4)
+
+backbone_params = []
+head_params = []
+
+for name, param in model.named_parameters():
+    if "head" in name:
+        head_params.append(param)
+    else:
+        backbone_params.append(param)
+
+optimizer = torch.optim.Adam(
+    [
+        {
+            "params": backbone_params,
+            # "lr": 5e-4,
+            "weight_decay": 1e-5,
+        },  # lower LR for pretrained backbone
+        {
+            "params": head_params,
+            # "lr": 9e-3,
+            "weight_decay": 5e-4,
+        },  # higher LR for new head
+    ]
+)
+
 # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
-scheduler = None
+# scheduler = None
 
 
 def draw_gaussian(heatmap, cx, cy, sigma=1.0):
@@ -360,6 +478,18 @@ val_loader = create_loader(
 )
 # val_evaluator = CocoStatsEvaluator(dataset=val_dataset, pred_yxyx=False)
 
+steps_per_epoch = len(train_loader)
+
+scheduler = optim.lr_scheduler.OneCycleLR(
+    optimizer,
+    max_lr=[5e-4, 1e-3],  # peak LR for each param group
+    total_steps=EPOCHS * steps_per_epoch,
+    pct_start=0.2,  # fraction of cycle to increase LR
+    anneal_strategy="cos",  # cosine decay
+    div_factor=10,  # initial LR = max_lr/div_factor
+    final_div_factor=100,  # final LR = max_lr/final_div_factor
+)
+
 
 # Determine output size / stride once
 dummy_input = torch.zeros(1, 3, IMG_SIZE, IMG_SIZE).to(device)
@@ -371,14 +501,17 @@ stride = IMG_SIZE // target_h
 # Now in your training loop, use this stride / target_h / target_w
 training_progress = defaultdict(list)
 COMPUTE_CYCLE = 1
-CONFIDENCE_THRESHOLD = 0.1
+CONFIDENCE_THRESHOLD = 0.15
+VERBOSE = False
 
 for epoch in range(EPOCHS):
     DO_ADDITIONAL_COMPUTE = (epoch + 1) % COMPUTE_CYCLE == 0 or epoch == 0
     val_stats = [-1] * 12
     model.train()
     start_time = time.time()
-    for imgs, targets in tqdm(train_loader, desc=f"E {epoch + 1}/{EPOCHS} | Tb"):
+    for imgs, targets in tqdm(
+        train_loader, desc=f"E {epoch + 1}/{EPOCHS} | Tb", disable=not VERBOSE
+    ):
         imgs = imgs.to(device)
 
         # Split targets and encode using precomputed stride/size
@@ -406,8 +539,8 @@ for epoch in range(EPOCHS):
         loss.backward()
         optimizer.step()
 
-    if scheduler is not None:
-        scheduler.step()
+        if scheduler is not None:
+            scheduler.step()
 
     if DO_ADDITIONAL_COMPUTE:
         model.eval()
@@ -415,7 +548,7 @@ for epoch in range(EPOCHS):
         all_preds = []
         metric = MeanAveragePrecision()
         with torch.no_grad():
-            for i, (val_imgs, val_targets) in enumerate(train_loader):
+            for i, (val_imgs, val_targets) in enumerate(val_loader):
                 val_imgs = val_imgs.to(device)
 
                 val_preds = model(val_imgs)
@@ -472,7 +605,7 @@ for epoch in range(EPOCHS):
         training_progress["val_map_75"].append(-1)
 
     pd.DataFrame(training_progress).to_csv(
-        f"training_{MODEL_NAME}_{RUNTIME}.csv", index=False
+        f"results/training/training_{MODEL_NAME}_{RUNTIME}.csv", index=False
     )
     if DO_ADDITIONAL_COMPUTE:
         print(
