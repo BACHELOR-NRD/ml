@@ -17,6 +17,9 @@ __pycache__/
 **/*.csv
 **/outputs/
 
+# Logs
+**/logs/*.log
+
 # Data files
 **/data/**
 # !**/data/**/
