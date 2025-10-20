@@ -23,7 +23,7 @@ IMG_SIZE = 320
 NUM_CLASSES = None
 EPOCHS = 500
 FREEZE_BACKBONE = False
-LR = 1e-3
+LR = 1e-4
 extra_args = dict(image_size=(IMG_SIZE, IMG_SIZE))
 MODEL_NAME = "tf_efficientdet_d4"
 RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -103,7 +103,7 @@ else:
 
 
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    optimizer, T_max=EPOCHS, eta_min=1e-6
+    optimizer, T_max=EPOCHS, eta_min=5e-7
 )
 bench_train = bench_train.cuda()
 training_progress = defaultdict(list)
@@ -138,13 +138,13 @@ for epoch in range(EPOCHS):
         sbl += round(output["box_loss"].item(), 2)  # type: ignore
         scl += round(output["class_loss"].item(), 2)  # type: ignore
 
-        bench_train.eval()
-        with torch.no_grad():
-            for input, target in tqdm(
-                val_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Validation batches"
-            ):
-                output = bench_train(input, target)  # type: ignore
-                train_evaluator.add_predictions(output["detections"], target)  # type: ignore
+    bench_train.eval()
+    with torch.no_grad():
+        for input, target in tqdm(
+            val_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Validation batches"
+        ):
+            output = bench_train(input, target)  # type: ignore
+            train_evaluator.add_predictions(output["detections"], target)  # type: ignore
 
     stats = train_evaluator.evaluate()
     stats = [round(s, 4) for s in stats]
