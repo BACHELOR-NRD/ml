@@ -18,15 +18,16 @@ logger.info("Starting efficient_det.py")
 
 # CONFIGURATION
 
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 IMG_SIZE = 320
-NUM_CLASSES = None
-EPOCHS = 500
+NUM_CLASSES = 3
+EPOCHS = 400
 FREEZE_BACKBONE = False
-LR = 1e-4
+LR = 5e-4
 extra_args = dict(image_size=(IMG_SIZE, IMG_SIZE))
 MODEL_NAME = "tf_efficientdet_d4"
 RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+DATASET_LIMIT = 8
 
 # TRAINING
 logger.info(
@@ -47,13 +48,14 @@ model_train_config = bench_train.config
 labeler = AnchorLabeler(
     Anchors.from_config(model_train_config),
     model_train_config.num_classes,
-    match_threshold=0.5,
+    match_threshold=0.2,
 )
 
 train_dataset = create_dataset_custom(
     name="train",
     img_dir=DATA_CAR_DD_DIR / "images" / "train",
     ann_file=DATA_CAR_DD_DIR / "instances_train.json",
+    limit=DATASET_LIMIT,
 )
 
 train_input_config = resolve_input_config({}, model_train_config)
@@ -74,6 +76,7 @@ val_dataset = create_dataset_custom(
     name="val",
     img_dir=DATA_CAR_DD_DIR / "images" / "val",
     ann_file=DATA_CAR_DD_DIR / "instances_val.json",
+    limit=DATASET_LIMIT,
 )
 
 val_loader = create_loader(
@@ -105,6 +108,7 @@ else:
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
     optimizer, T_max=EPOCHS, eta_min=5e-7
 )
+scheduler = None
 bench_train = bench_train.cuda()
 training_progress = defaultdict(list)
 
@@ -141,7 +145,7 @@ for epoch in range(EPOCHS):
     bench_train.eval()
     with torch.no_grad():
         for input, target in tqdm(
-            val_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Validation batches"
+            train_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Validation batches"
         ):
             output = bench_train(input, target)  # type: ignore
             train_evaluator.add_predictions(output["detections"], target)  # type: ignore
@@ -150,7 +154,8 @@ for epoch in range(EPOCHS):
     stats = [round(s, 4) for s in stats]
     train_evaluator.reset()
 
-    scheduler.step()
+    if scheduler is not None:
+        scheduler.step()
 
     training_progress["loss"].append(round(sll / batch_count, 4))
     training_progress["box_loss"].append(round(sbl / batch_count, 4))
