@@ -1,5 +1,5 @@
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from matplotlib import pyplot as plt
 import pandas as pd
@@ -9,8 +9,8 @@ import pandas as pd
 class ResultSaver:
     res_dir: str | Path
     name: str
-    data: list = []
-    metadata: dict = {}
+    data: list = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):
         Path(self.res_dir).mkdir(parents=True, exist_ok=True)
