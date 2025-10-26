@@ -1,3 +1,4 @@
+import datetime as dt
 from typing import Any, cast
 
 import torch
@@ -16,12 +17,14 @@ from torchvision.models.detection.faster_rcnn import (  # noqa: F401
     FasterRCNN_ResNet50_FPN_V2_Weights,
 )
 
-from ml_carbucks import DATA_CAR_DD_DIR
+from ml_carbucks import DATA_CAR_DD_DIR, RESULTS_DIR
 from ml_carbucks.utils.logger import setup_logger
+from ml_carbucks.utils.training import ResultSaver
 
-IMG_SIZE = 320
-BATCH_SIZE = 16
+IMG_SIZE = 512
+BATCH_SIZE = 8
 NUM_CLASSES = 4  # background + 3 object classes
+RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
 # --- Dataset must return ---
 # img: tensor [3,H,W]
 # target: dict with:
@@ -104,6 +107,8 @@ def create_transforms(is_training: bool) -> A.Compose:
     )
     if is_training:
         arr.append(A.HorizontalFlip(p=0.5))
+        arr.append(A.RandomBrightnessContrast(p=0.2))
+        arr.append(A.RandomGamma(p=0.2))
 
     arr.extend(
         [
@@ -133,6 +138,7 @@ train_dataset = COCODetectionWrapper(
     ann_file=DATA_CAR_DD_DIR / "instances_train.json",
     transforms=create_transforms(is_training=True),
 )
+
 val_dataset = COCODetectionWrapper(
     img_folder=DATA_CAR_DD_DIR / "images" / "val",
     ann_file=DATA_CAR_DD_DIR / "instances_val.json",
@@ -169,10 +175,6 @@ logger = setup_logger("faster_rcnn")
 logger.info("Running Faster R-CNN training demo")
 
 
-# clean gpu memory
-
-torch.cuda.empty_cache()
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model = fasterrcnn_resnet50_fpn(weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT)
@@ -191,15 +193,29 @@ for name, param in model.named_parameters():
         head_params.append(param)
 optimizer = torch.optim.AdamW(
     [
-        {"params": backbone_params, "lr": 5e-5, "weight_decay": 1e-4},
-        {"params": head_params, "lr": 1e-3, "weight_decay": 1e-4},
+        {"params": backbone_params, "lr": 5e-5, "weight_decay": 1e-5},
+        {"params": head_params, "lr": 4e-5, "weight_decay": 1e-4},
     ]
 )
 
-EPOCHS = 200
+EPOCHS = 25
 # --- Scheduler (optional) ---
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
+
+saver = ResultSaver(
+    res_dir=RESULTS_DIR / "faster_rcnn",
+    name=f"training_results_{RUNTIME}",
+    metadata={
+        "img_size": IMG_SIZE,
+        "batch_size": BATCH_SIZE,
+        "num_classes": NUM_CLASSES,
+        "epochs": EPOCHS,
+        "optimizer": optimizer.__class__.__name__,
+        "scheduler": scheduler.__class__.__name__ if scheduler else "None",
+        "backbone": model.backbone.__class__.__name__,
+    },
+)
 
 # --- Training loop ---
 num_epochs = EPOCHS
@@ -240,3 +256,11 @@ for epoch in range(num_epochs):
     logger.info(
         f"Epoch {epoch + 1}/{num_epochs} | Loss: {total_loss:.4f} | val_map: {val_res['map'].item():.4f}"
     )
+    saver.save(
+        epoch=epoch + 1,
+        loss=total_loss,
+        val_map=val_res["map"].item(),
+        val_map_50=val_res["map_50"].item(),
+    )
+
+saver.plot()
