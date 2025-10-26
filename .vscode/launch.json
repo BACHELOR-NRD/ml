@@ -28,6 +28,14 @@
             "console": "internalConsole",
             "justMyCode": false
         },
+        {
+            "name": "Faster R-CNN Train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ml_carbucks/car_damage/faster_rcnn.py",
+            "console": "internalConsole",
+            "justMyCode": false
+        },
 
     ]
 }

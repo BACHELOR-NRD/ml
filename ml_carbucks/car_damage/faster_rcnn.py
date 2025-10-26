@@ -218,7 +218,7 @@ optimizer = torch.optim.AdamW(
     ]
 )
 
-EPOCHS = 50
+EPOCHS = 100
 # --- Scheduler (optional) ---
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
