@@ -18,7 +18,7 @@ from torchvision.models.detection.faster_rcnn import (  # noqa: F401
 
 from ml_carbucks import DATA_CAR_DD_DIR, RESULTS_DIR
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks.utils.training import ResultSaver
+from ml_carbucks.utils.result_saver import ResultSaver
 
 IMG_SIZE = 512
 BATCH_SIZE = 16

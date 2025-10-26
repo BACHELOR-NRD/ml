@@ -16,7 +16,7 @@
             "name": "EfficientDet Train",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ml_carbucks/car_damage/efficient_det.py",
+            "program": "${workspaceFolder}/ml_carbucks/exploration/efficient_det.py",
             "console": "internalConsole",
             "justMyCode": false
         },
@@ -24,7 +24,7 @@
             "name": "CenterNet Train",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ml_carbucks/car_damage/center_net.py",
+            "program": "${workspaceFolder}/ml_carbucks/exploration/center_net.py",
             "console": "internalConsole",
             "justMyCode": false
         },
@@ -32,7 +32,7 @@
             "name": "Faster R-CNN Train",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ml_carbucks/car_damage/faster_rcnn.py",
+            "program": "${workspaceFolder}/ml_carbucks/exploration/faster_rcnn.py",
             "console": "internalConsole",
             "justMyCode": false
         },
