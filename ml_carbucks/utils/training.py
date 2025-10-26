@@ -15,7 +15,7 @@ class ResultSaver:
     def __post_init__(self):
         Path(self.res_dir).mkdir(parents=True, exist_ok=True)
 
-    def save(self, epoch: int, loss: float, val_map: float, **kwargs) -> None:
+    def save(self, epoch: int, loss: float, val_map: float, **kwargs) -> "ResultSaver":
         self.data.append(
             {
                 "epoch": epoch,
@@ -29,7 +29,11 @@ class ResultSaver:
             Path(self.res_dir) / f"{self.name}.csv", index=False
         )
 
-    def plot(self, secondary_y: str = "val_map", save: bool = True) -> None:
+        return self
+
+    def plot(
+        self, secondary_y: str = "val_map", save: bool = True, show: bool = True
+    ) -> "ResultSaver":
         df = pd.DataFrame(self.data)
         df.plot(
             x="epoch",
@@ -39,4 +43,9 @@ class ResultSaver:
         )
         if save:
             plt.savefig(Path(self.res_dir) / f"{self.name}_plot.png")
-        plt.show()
+
+        if show:
+            plt.show()
+        plt.close()
+
+        return self
