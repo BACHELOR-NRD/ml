@@ -281,4 +281,6 @@ for epoch in range(num_epochs):
         loss=total_loss,
         val_map=val_res["map"].item(),
         val_map_50=val_res["map_50"].item(),
+        lr_head=optimizer.param_groups[1]["lr"],
+        lr_backbone=optimizer.param_groups[0]["lr"],
     ).plot(show=False)
