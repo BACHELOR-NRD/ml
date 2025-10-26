@@ -1,5 +1,4 @@
 import datetime as dt
-from typing import Any, cast
 
 import torch
 import numpy as np
@@ -22,14 +21,9 @@ from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.training import ResultSaver
 
 IMG_SIZE = 512
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 NUM_CLASSES = 4  # background + 3 object classes
 RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-# --- Dataset must return ---
-# img: tensor [3,H,W]
-# target: dict with:
-#   boxes (FloatTensor [N,4]), labels (Int64Tensor [N])
-#   optional: image_id, area, iscrowd
 
 
 class COCODetectionWrapper(Dataset):
@@ -93,35 +87,60 @@ class COCODetectionWrapper(Dataset):
 
 def create_transforms(is_training: bool) -> A.Compose:
 
-    arr = []
-    arr.extend(
-        [
-            A.LongestMaxSize(max_size=IMG_SIZE),
-            A.PadIfNeeded(
-                min_height=IMG_SIZE,
-                min_width=IMG_SIZE,
-                border_mode=0,  # constant padding
-                fill=(0, 0, 0),  # black
+    base = [
+        # Always resize and pad to square input
+        A.LongestMaxSize(max_size=IMG_SIZE),
+        A.PadIfNeeded(
+            min_height=IMG_SIZE,
+            min_width=IMG_SIZE,
+            border_mode=0,  # constant padding
+            fill=(0, 0, 0),
+        ),
+    ]
+
+    if is_training:
+        # --- Spatial augmentations (geometry) ---
+        base += [
+            A.ShiftScaleRotate(
+                shift_limit=0.05,  # up to ±5% shift
+                scale_limit=0.1,  # up to ±10% zoom
+                rotate_limit=10,  # ±10 degrees
+                border_mode=0,
+                fill=(0, 0, 0),
+                p=0.7,
+            ),
+            A.HorizontalFlip(p=0.5),
+            A.RandomSizedBBoxSafeCrop(height=IMG_SIZE, width=IMG_SIZE, p=0.3),
+            # --- Photometric augmentations (color) ---
+            A.OneOf(
+                [
+                    A.RandomBrightnessContrast(
+                        brightness_limit=0.3, contrast_limit=0.3, p=1
+                    ),
+                    A.HueSaturationValue(
+                        hue_shift_limit=10, sat_shift_limit=15, val_shift_limit=10, p=1
+                    ),
+                    A.CLAHE(clip_limit=2, p=1),
+                ],
+                p=0.5,
+            ),
+            A.GaussNoise(
+                std_range=(0.01, 0.05),
+                mean_range=(0.0, 0.0),
+                per_channel=True,
+                noise_scale_factor=1.0,
+                p=0.2,
             ),
         ]
-    )
-    if is_training:
-        arr.append(A.HorizontalFlip(p=0.5))
-        arr.append(A.RandomBrightnessContrast(p=0.2))
-        arr.append(A.RandomGamma(p=0.2))
 
-    arr.extend(
-        [
-            A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-            ToTensorV2(),
-        ]
-    )
+    # --- Normalization and tensor conversion ---
+    base += [
+        A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+        ToTensorV2(),
+    ]
 
     custom_transform = A.Compose(
-        cast(
-            Any,
-            arr,
-        ),
+        base,
         bbox_params=A.BboxParams(
             format="coco",  # we now correctly pass COCO-format boxes in/out
             label_fields=["labels"],
@@ -191,14 +210,15 @@ for name, param in model.named_parameters():
         backbone_params.append(param)
     else:
         head_params.append(param)
+
 optimizer = torch.optim.AdamW(
     [
         {"params": backbone_params, "lr": 5e-5, "weight_decay": 1e-5},
-        {"params": head_params, "lr": 4e-5, "weight_decay": 1e-4},
+        {"params": head_params, "lr": 5e-4, "weight_decay": 1e-4},
     ]
 )
 
-EPOCHS = 25
+EPOCHS = 50
 # --- Scheduler (optional) ---
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
@@ -261,6 +281,4 @@ for epoch in range(num_epochs):
         loss=total_loss,
         val_map=val_res["map"].item(),
         val_map_50=val_res["map_50"].item(),
-    )
-
-saver.plot()
+    ).plot(show=False)
