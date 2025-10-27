@@ -7,13 +7,13 @@ import pandas as pd
 
 @dataclass
 class ResultSaver:
-    res_dir: str | Path
+    path: str | Path
     name: str
     data: list = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
 
     def __post_init__(self):
-        Path(self.res_dir).mkdir(parents=True, exist_ok=True)
+        Path(self.path).mkdir(parents=True, exist_ok=True)
 
     def save(self, epoch: int, loss: float, val_map: float, **kwargs) -> "ResultSaver":
         self.data.append(
@@ -26,7 +26,7 @@ class ResultSaver:
             }
         )
         pd.DataFrame(self.data).to_csv(
-            Path(self.res_dir) / f"{self.name}.csv", index=False
+            Path(self.path) / f"{self.name}.csv", index=False
         )
 
         return self
@@ -42,7 +42,7 @@ class ResultSaver:
             title="Training Metrics over Epochs",
         )
         if save:
-            plt.savefig(Path(self.res_dir) / f"{self.name}_plot.png")
+            plt.savefig(Path(self.path) / f"{self.name}_plot.png")
 
         if show:
             plt.show()

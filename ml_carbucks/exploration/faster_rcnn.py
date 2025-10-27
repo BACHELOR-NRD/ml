@@ -25,6 +25,8 @@ BATCH_SIZE = 16
 NUM_CLASSES = 4  # background + 3 object classes
 RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
 
+logger = setup_logger("faster_rcnn")
+
 
 class COCODetectionWrapper(Dataset):
     def __init__(self, img_folder, ann_file, transforms=None):
@@ -32,8 +34,18 @@ class COCODetectionWrapper(Dataset):
         self.transforms = transforms
 
         # Map COCO category IDs (non-sequential) -> continuous label IDs
+        label_ids = [cat["id"] for cat in self.dataset.coco.cats.values()]
+        label_increment = 0
+        if 0 in label_ids:
+            logger.warning(
+                "COCO category IDs contain 0, which is reserved for background."
+            )
+            logger.warning("Make sure that it is properly handled in your dataset.")
+            logger.warning("Incrementing all category IDs by 1.")
+            label_increment = 1  # +1 because 0 = background
+
         self.cat_id_to_label = {
-            cat["id"]: idx + 1  # +1 because 0 = background
+            cat["id"]: idx + label_increment  # adding increment if needed
             for idx, cat in enumerate(self.dataset.coco.cats.values())
         }
 
@@ -151,136 +163,130 @@ def create_transforms(is_training: bool) -> A.Compose:
     return custom_transform
 
 
-# --- Dataset ---
-train_dataset = COCODetectionWrapper(
-    img_folder=DATA_CAR_DD_DIR / "images" / "train",
-    ann_file=DATA_CAR_DD_DIR / "instances_train.json",
-    transforms=create_transforms(is_training=True),
-)
-
-val_dataset = COCODetectionWrapper(
-    img_folder=DATA_CAR_DD_DIR / "images" / "val",
-    ann_file=DATA_CAR_DD_DIR / "instances_val.json",
-    transforms=create_transforms(is_training=False),
-)
-
-
 def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=BATCH_SIZE,  # 2–8 is typical, memory permitting
-    shuffle=True,
-    num_workers=BATCH_SIZE // 2,  # adjust based on your CPU
-    pin_memory=True,
-    collate_fn=collate_fn,  # crucial
-)
-
-val_loader = DataLoader(
-    val_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=BATCH_SIZE // 2,
-    pin_memory=True,
-    collate_fn=collate_fn,
-)
-
-
-logger = setup_logger("faster_rcnn")
-
-
-logger.info("Running Faster R-CNN training demo")
-
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-model = fasterrcnn_resnet50_fpn(weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT)
-# model = fasterrcnn_resnet50_fpn_v2(weights=FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT)
-in_features = model.roi_heads.box_predictor.cls_score.in_features  # type: ignore
-model.roi_heads.box_predictor = FastRCNNPredictor(in_features, NUM_CLASSES)
-model = model.to(device)
-
-# --- Optimizer ---
-backbone_params = []
-head_params = []
-for name, param in model.named_parameters():
-    if "backbone" in name:
-        backbone_params.append(param)
-    else:
-        head_params.append(param)
-
-optimizer = torch.optim.AdamW(
-    [
-        {"params": backbone_params, "lr": 5e-5, "weight_decay": 1e-5},
-        {"params": head_params, "lr": 5e-4, "weight_decay": 1e-4},
-    ]
-)
-
-EPOCHS = 100
-# --- Scheduler (optional) ---
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
-
-
-saver = ResultSaver(
-    res_dir=RESULTS_DIR / "faster_rcnn",
-    name=f"training_results_{RUNTIME}",
-    metadata={
-        "img_size": IMG_SIZE,
-        "batch_size": BATCH_SIZE,
-        "num_classes": NUM_CLASSES,
-        "epochs": EPOCHS,
-        "optimizer": optimizer.__class__.__name__,
-        "scheduler": scheduler.__class__.__name__ if scheduler else "None",
-        "backbone": model.backbone.__class__.__name__,
-    },
-)
-
-# --- Training loop ---
-num_epochs = EPOCHS
-for epoch in range(num_epochs):
-    model.train()
-    total_loss = 0.0
-    for imgs, targets in tqdm(train_loader):
-
-        imgs = list(img.to(device) for img in imgs)
-        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-
-        loss_dict = model(imgs, targets)
-        loss = sum(loss for loss in loss_dict.values())
-        optimizer.zero_grad()
-        loss.backward()  # type: ignore
-        optimizer.step()
-
-        total_loss += loss.item()  # type: ignore
-
-    if scheduler:
-        scheduler.step()
-
-    # --- Validation on training data (resized) ---
-    model.eval()
-    metric = MeanAveragePrecision()
-    with torch.no_grad():
-        for imgs, targets in tqdm(val_loader):
-            imgs = list(img.to(device) for img in imgs)
-            outputs = model(imgs)
-
-            # Prepare targets in expected dict format
-            targets_cpu = [{k: v.cpu() for k, v in t.items()} for t in targets]
-            outputs_cpu = [{k: v.cpu() for k, v in t.items()} for t in outputs]
-            metric.update(outputs_cpu, targets_cpu)
-
-    val_res = metric.compute()
-    metric.reset()
-    logger.info(
-        f"Epoch {epoch + 1}/{num_epochs} | Loss: {total_loss:.4f} | val_map: {val_res['map'].item():.4f}"
+if __name__ == "__main__":
+    # --- Dataset ---
+    train_dataset = COCODetectionWrapper(
+        img_folder=DATA_CAR_DD_DIR / "images" / "train",
+        ann_file=DATA_CAR_DD_DIR / "instances_train.json",
+        transforms=create_transforms(is_training=True),
     )
-    saver.save(
-        epoch=epoch + 1,
-        loss=total_loss,
-        val_map=val_res["map"].item(),
-        val_map_50=val_res["map_50"].item(),
-        lr_head=optimizer.param_groups[1]["lr"],
-        lr_backbone=optimizer.param_groups[0]["lr"],
-    ).plot(show=False)
+
+    val_dataset = COCODetectionWrapper(
+        img_folder=DATA_CAR_DD_DIR / "images" / "val",
+        ann_file=DATA_CAR_DD_DIR / "instances_val.json",
+        transforms=create_transforms(is_training=False),
+    )
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=BATCH_SIZE,  # 2–8 is typical, memory permitting
+        shuffle=True,
+        num_workers=BATCH_SIZE // 2,  # adjust based on your CPU
+        pin_memory=True,
+        collate_fn=collate_fn,  # crucial
+    )
+
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=BATCH_SIZE // 2,
+        pin_memory=True,
+        collate_fn=collate_fn,
+    )
+
+    logger.info("Running Faster R-CNN training demo")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model = fasterrcnn_resnet50_fpn(weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT)
+    # model = fasterrcnn_resnet50_fpn_v2(weights=FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT)
+    in_features = model.roi_heads.box_predictor.cls_score.in_features  # type: ignore
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, NUM_CLASSES)
+    model = model.to(device)
+
+    # --- Optimizer ---
+    backbone_params = []
+    head_params = []
+    for name, param in model.named_parameters():
+        if "backbone" in name:
+            backbone_params.append(param)
+        else:
+            head_params.append(param)
+
+    optimizer = torch.optim.AdamW(
+        [
+            {"params": backbone_params, "lr": 5e-5, "weight_decay": 1e-5},
+            {"params": head_params, "lr": 5e-4, "weight_decay": 1e-4},
+        ]
+    )
+
+    EPOCHS = 100
+    # --- Scheduler (optional) ---
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS)
+
+    saver = ResultSaver(
+        path=RESULTS_DIR / "faster_rcnn",
+        name=f"training_results_{RUNTIME}",
+        metadata={
+            "img_size": IMG_SIZE,
+            "batch_size": BATCH_SIZE,
+            "num_classes": NUM_CLASSES,
+            "epochs": EPOCHS,
+            "optimizer": optimizer.__class__.__name__,
+            "scheduler": scheduler.__class__.__name__ if scheduler else "None",
+            "backbone": model.backbone.__class__.__name__,
+        },
+    )
+
+    # --- Training loop ---
+    num_epochs = EPOCHS
+    for epoch in range(num_epochs):
+        model.train()
+        total_loss = 0.0
+        for imgs, targets in tqdm(train_loader):
+
+            imgs = list(img.to(device) for img in imgs)
+            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+
+            loss_dict = model(imgs, targets)
+            loss = sum(loss for loss in loss_dict.values())
+            optimizer.zero_grad()
+            loss.backward()  # type: ignore
+            optimizer.step()
+
+            total_loss += loss.item()  # type: ignore
+
+        if scheduler:
+            scheduler.step()
+
+        # --- Validation on training data (resized) ---
+        model.eval()
+        metric = MeanAveragePrecision()
+        with torch.no_grad():
+            for imgs, targets in tqdm(val_loader):
+                imgs = list(img.to(device) for img in imgs)
+                outputs = model(imgs)
+
+                # Prepare targets in expected dict format
+                targets_cpu = [{k: v.cpu() for k, v in t.items()} for t in targets]
+                outputs_cpu = [{k: v.cpu() for k, v in t.items()} for t in outputs]
+                metric.update(outputs_cpu, targets_cpu)
+
+        val_res = metric.compute()
+        metric.reset()
+        logger.info(
+            f"Epoch {epoch + 1}/{num_epochs} | Loss: {total_loss:.4f} | val_map: {val_res['map'].item():.4f}"
+        )
+        saver.save(
+            epoch=epoch + 1,
+            loss=total_loss,
+            val_map=val_res["map"].item(),
+            val_map_50=val_res["map_50"].item(),
+            lr_head=optimizer.param_groups[1]["lr"],
+            lr_backbone=optimizer.param_groups[0]["lr"],
+        ).plot(show=False)
