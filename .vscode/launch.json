@@ -13,10 +13,10 @@
             "console": "internalConsole"
         },
         {
-            "name": "EfficientDet Train V2",
+            "name": "EfficientDet Train",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ml_carbucks/exploration/efficient_det_v2.py",
+            "program": "${workspaceFolder}/ml_carbucks/exploration/efficient_det.py",
             "console": "internalConsole",
             "justMyCode": false
         },
