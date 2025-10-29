@@ -4,7 +4,7 @@ import datetime as dt
 from pathlib import Path
 from copy import deepcopy
 from tempfile import NamedTemporaryFile
-from typing import List, Optional, Union, cast
+from typing import List, Literal, Optional, Union, cast
 from collections import OrderedDict
 
 import torch
@@ -52,12 +52,12 @@ class FilteredDataset:
 
 def create_dataset_custom(
     name: str,
-    img_dir: Union[str, Path],
-    ann_file: Union[str, Path],
+    img_dir: Path,
+    ann_file: Path,
+    has_labels: bool,
     limit: Optional[int] = None,
     limit_mode: str = "first",
     seed: int | None = None,
-    use_xyxy: bool = True,
 ):
     """
     Create a COCO dataset with optional limiting of the number of images.
@@ -69,6 +69,7 @@ def create_dataset_custom(
         name: Name of the dataset.
         img_dir: Directory containing the images.
         ann_file: Path to the COCO annotation file.
+        has_labels: Whether the dataset has labels (True for train/val, False for predictions).
         limit: If positive, limits the dataset to this many images.
         limit_mode: 'first' to take the first `limit` images, 'random'
                     to take a random sample of `limit` images.
@@ -77,18 +78,17 @@ def create_dataset_custom(
         The created dataset or a list of datasets if multiple are created.
     """
 
-    if isinstance(img_dir, str):
-        img_dir = Path(deepcopy(img_dir))
-
-    datasets = OrderedDict()
-    dataset_cfg = Coco2017Cfg()
-    parser = CocoParserCfg(ann_filename=str(ann_file), bbox_yxyx=(not use_xyxy))
-    dataset_cls = DetectionDatset
-    dataset = dataset_cls(
-        data_dir=img_dir,
-        parser=create_parser(dataset_cfg.parser, cfg=parser),
+    # NOTE: This parser configuration needs YXYX annotation format.
+    # This is because of the insane way the EfficientDet model was written.
+    # It just is what it is.
+    parser_cfg = CocoParserCfg(
+        ann_filename=ann_file,  # type: ignore
+        has_labels=has_labels,
     )
-
+    dataset = DetectionDatset(
+        data_dir=img_dir,  # type: ignore
+        parser=create_parser("coco", cfg=parser_cfg),
+    )
     # NOTE: this is a fix for missing 'info' field in some COCO annotations
     if "info" not in dataset.parser.coco.dataset:  # type: ignore
         dataset.parser.coco.dataset["info"] = {  # type: ignore
@@ -99,7 +99,6 @@ def create_dataset_custom(
             "contributor": "unknown",
             "date_created": "unknown",
         }
-
     # If limit is set and positive, create a FilteredDataset so the loader
     # only iterates over up to `limit` items. This limits images inside the dataset.
     if limit is not None and int(limit) > 0:
@@ -114,9 +113,7 @@ def create_dataset_custom(
             indices = list(range(n))
         dataset = FilteredDataset(dataset, indices)
 
-    datasets[name] = dataset
-    datasets = list(datasets.values())
-    return datasets if len(datasets) > 1 else datasets[0]
+    return dataset
 
 
 class CocoStatsEvaluator(Evaluator):

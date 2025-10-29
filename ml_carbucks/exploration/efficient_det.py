@@ -1,4 +1,5 @@
 import datetime as dt
+from pathlib import Path
 from typing import Any
 
 from tqdm import tqdm
@@ -16,9 +17,10 @@ from effdet.data import resolve_input_config, SkipSubset  # noqa F401
 from effdet.anchors import Anchors, AnchorLabeler
 import torch  # noqa F401
 
+from ml_carbucks.utils.coco import create_dataset_custom
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.result_saver import ResultSaver  # noqa F401
-from ml_carbucks import RESULTS_DIR
+from ml_carbucks import RESULTS_DIR, DATA_DIR
 
 
 logger = setup_logger("effdet_v2", log_file="/home/bachelor/ml-carbucks/logs/logs.log")
@@ -46,15 +48,27 @@ def create_datasets_and_loaders(
 
     input_config = resolve_input_config(args, model_config)
 
-    dataset_train, dataset_eval = create_dataset(args.dataset, args.root)
-
-    # labeler = None
-    # if not args.bench_labeler:
-    labeler = AnchorLabeler(
-        Anchors.from_config(model_config),
-        model_config.num_classes,
-        match_threshold=0.5,
+    dataset_train = create_dataset_custom(
+        name="train",
+        img_dir=DATA_DIR / "car_dd" / "images" / "train",
+        ann_file=DATA_DIR / "car_dd" / "instances_train_curated.json",
+        has_labels=True,
     )
+
+    dataset_eval = create_dataset_custom(
+        name="val",
+        img_dir=DATA_DIR / "car_dd" / "images" / "val",
+        ann_file=DATA_DIR / "car_dd" / "instances_val_curated.json",
+        has_labels=True,
+    )
+
+    labeler = None
+    if not args.bench_labeler:
+        labeler = AnchorLabeler(
+            Anchors.from_config(model_config),
+            model_config.num_classes,
+            match_threshold=0.5,
+        )
 
     loader_train = create_loader(
         dataset_train,
@@ -104,6 +118,7 @@ def create_datasets_and_loaders(
     return loader_train, loader_eval, evaluator
 
 
+# NOTE: EfficientDet uses YXYX format and 0 class is reserved for background so own labels from 0..N-1 are incorrect.
 def main():
 
     args = Args(
@@ -165,15 +180,15 @@ def main():
         args, bench_train_config
     )
 
-    parser_max_label = loader_train.dataset.parser.max_label  # type: ignore
-    config_num_classes = bench_train_config.num_classes
+    # parser_max_label = loader_train.dataset.parser.max_label  # type: ignore
+    # config_num_classes = bench_train_config.num_classes
 
-    if parser_max_label != config_num_classes:
-        logger.error(
-            f"Number of classes in dataset ({parser_max_label}) does not match "
-            f"model config ({config_num_classes})."
-        )
-        exit(1)
+    # if parser_max_label != config_num_classes:
+    #     logger.error(
+    #         f"Number of classes in dataset ({parser_max_label}) does not match "
+    #         f"model config ({config_num_classes})."
+    #     )
+    #     exit(1)
 
     saver = ResultSaver(
         path=RESULTS_DIR / "effdet_v2",
