@@ -1,244 +1,221 @@
-import torch
 import datetime as dt
+from typing import Any
+
 from tqdm import tqdm
-from collections import defaultdict
-
-import pandas as pd
-from effdet import create_model, create_loader
-from effdet.data import resolve_input_config
+from effdet import (  # noqa F401
+    create_model,
+    unwrap_bench,
+    create_loader,
+    create_dataset,
+    create_evaluator,
+)
+from timm.optim._optim_factory import create_optimizer_v2
+from timm.scheduler.scheduler_factory import create_scheduler_v2
+from timm.models.layers import set_layer_config  # type: ignore # noqa F401
+from effdet.data import resolve_input_config, SkipSubset  # noqa F401
 from effdet.anchors import Anchors, AnchorLabeler
+import torch  # noqa F401
 
-from ml_carbucks import DATA_CAR_DD_DIR, RESULTS_DIR
-from ml_carbucks.utils.coco import CocoStatsEvaluator, create_dataset_custom
 from ml_carbucks.utils.logger import setup_logger
+from ml_carbucks.utils.result_saver import ResultSaver  # noqa F401
+from ml_carbucks import RESULTS_DIR
 
 
-logger = setup_logger("efficient_det")
-logger.info("Starting efficient_det.py")
-
-# CONFIGURATION
-
-BATCH_SIZE = 8
-IMG_SIZE = 320
-NUM_CLASSES = 3
-EPOCHS = 400
-FREEZE_BACKBONE = False
-LR = 5e-4
-extra_args = dict(image_size=(IMG_SIZE, IMG_SIZE))
-MODEL_NAME = "tf_efficientdet_d4"
-RUNTIME = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-DATASET_LIMIT = 8
-
-# TRAINING
-logger.info(
-    f"Model: {MODEL_NAME}, Image Size: {IMG_SIZE}, Batch Size: {BATCH_SIZE}, Epochs: {EPOCHS}, Freeze Backbone: {FREEZE_BACKBONE}, LR: {LR}"
-)
-bench_train = create_model(
-    model_name=MODEL_NAME,
-    bench_task="train",
-    num_classes=NUM_CLASSES,
-    pretrained=True,
-    redundant_bias=None,
-    soft_nms=None,
-    checkpoint_path="",
-    checkpoint_ema=False,
-    **extra_args,
-)
-model_train_config = bench_train.config
-labeler = AnchorLabeler(
-    Anchors.from_config(model_train_config),
-    model_train_config.num_classes,
-    match_threshold=0.2,
-)
-
-train_dataset = create_dataset_custom(
-    name="train",
-    img_dir=DATA_CAR_DD_DIR / "images" / "train",
-    ann_file=DATA_CAR_DD_DIR / "instances_train.json",
-    limit=DATASET_LIMIT,
-)
-
-train_input_config = resolve_input_config({}, model_train_config)
-train_loader = create_loader(
-    train_dataset,
-    input_size=train_input_config["input_size"],
-    batch_size=BATCH_SIZE,
-    use_prefetcher=True,
-    interpolation=train_input_config["interpolation"],
-    mean=train_input_config["mean"],
-    std=train_input_config["std"],
-    num_workers=4,
-    pin_mem=False,
-    anchor_labeler=labeler,
-)
-
-val_dataset = create_dataset_custom(
-    name="val",
-    img_dir=DATA_CAR_DD_DIR / "images" / "val",
-    ann_file=DATA_CAR_DD_DIR / "instances_val.json",
-    limit=DATASET_LIMIT,
-)
-
-val_loader = create_loader(
-    val_dataset,
-    input_size=train_input_config["input_size"],
-    batch_size=BATCH_SIZE,
-    use_prefetcher=True,
-    interpolation=train_input_config["interpolation"],
-    mean=train_input_config["mean"],
-    std=train_input_config["std"],
-    num_workers=4,
-    pin_mem=False,
-    anchor_labeler=labeler,
-)
-
-train_evaluator = CocoStatsEvaluator(val_dataset, distributed=False, pred_yxyx=False)
-
-if FREEZE_BACKBONE is True:
-    for param in bench_train.model.backbone.parameters():  # type: ignore
-        param.requires_grad = False
-
-    optimizer = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, bench_train.parameters()), lr=LR
-    )
-else:
-    optimizer = torch.optim.AdamW(bench_train.parameters(), lr=LR, weight_decay=1e-5)
+logger = setup_logger("effdet_v2", log_file="/home/bachelor/ml-carbucks/logs/logs.log")
 
 
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-    optimizer, T_max=EPOCHS, eta_min=5e-7
-)
-scheduler = None
-bench_train = bench_train.cuda()
-training_progress = defaultdict(list)
+class Args:
+    def __init__(self, **entries):
+        for key, value in entries.items():
+            setattr(self, key, value)
+
+    def __getattr__(self, name: str) -> Any:
+        return self.__dict__.get(name, None)
+
+    def vars(self):
+        return self.__dict__
 
 
-best_model_score = 0.0
-best_model_weights = None
-for epoch in range(EPOCHS):
-    sll = sbl = scl = 0.0
+def create_datasets_and_loaders(
+    args: Args,
+    model_config: Any,
+    transform_train_fn=None,
+    transform_eval_fn=None,
+    collate_fn=None,
+):
 
-    if len(train_loader) == 0:
-        raise ValueError("Training loader is empty. Check the dataset and annotations.")
+    input_config = resolve_input_config(args, model_config)
 
-    training_progress["epoch"].append(epoch + 1)
-    training_progress["start_time"].append(
-        dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    dataset_train, dataset_eval = create_dataset(args.dataset, args.root)
+
+    # labeler = None
+    # if not args.bench_labeler:
+    labeler = AnchorLabeler(
+        Anchors.from_config(model_config),
+        model_config.num_classes,
+        match_threshold=0.5,
     )
 
-    bench_train.train()
-    batch_count = 0
-    for input, target in tqdm(
-        train_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Training batches"
-    ):
-        batch_count += 1
-        output = bench_train(input, target)
-        loss = output["loss"]
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+    loader_train = create_loader(
+        dataset_train,
+        input_size=input_config["input_size"],
+        batch_size=args.batch_size,
+        is_training=True,
+        use_prefetcher=args.prefetcher,
+        re_prob=args.reprob,
+        re_mode=args.remode,
+        re_count=args.recount,
+        # color_jitter=args.color_jitter,
+        # auto_augment=args.aa,
+        interpolation=input_config["interpolation"],
+        fill_color=input_config["fill_color"],
+        mean=input_config["mean"],
+        std=input_config["std"],
+        num_workers=args.workers,
+        distributed=args.distributed,
+        pin_mem=args.pin_mem,
+        anchor_labeler=labeler,
+        transform_fn=transform_train_fn,
+        collate_fn=collate_fn,
+    )
 
-        sll += round(loss.item(), 2)  # type: ignore
-        sbl += round(output["box_loss"].item(), 2)  # type: ignore
-        scl += round(output["class_loss"].item(), 2)  # type: ignore
+    loader_eval = create_loader(
+        dataset_eval,
+        input_size=input_config["input_size"],
+        batch_size=args.batch_size,
+        is_training=False,
+        use_prefetcher=args.prefetcher,
+        interpolation=input_config["interpolation"],
+        fill_color=input_config["fill_color"],
+        mean=input_config["mean"],
+        std=input_config["std"],
+        num_workers=args.workers,
+        distributed=args.distributed,
+        pin_mem=args.pin_mem,
+        anchor_labeler=labeler,
+        transform_fn=transform_eval_fn,
+        collate_fn=collate_fn,
+    )
 
-    bench_train.eval()
-    with torch.no_grad():
-        for input, target in tqdm(
-            train_loader, desc=f"Epoch {epoch + 1}/{EPOCHS} | Validation batches"
-        ):
-            output = bench_train(input, target)  # type: ignore
-            train_evaluator.add_predictions(output["detections"], target)  # type: ignore
+    evaluator = create_evaluator(
+        args.dataset, loader_eval.dataset, distributed=args.distributed, pred_yxyx=False
+    )
 
-    stats = train_evaluator.evaluate()
-    stats = [round(s, 4) for s in stats]
-    train_evaluator.reset()
+    return loader_train, loader_eval, evaluator
 
-    if scheduler is not None:
-        scheduler.step()
 
-    training_progress["loss"].append(round(sll / batch_count, 4))
-    training_progress["box_loss"].append(round(sbl / batch_count, 4))
-    training_progress["class_loss"].append(round(scl / batch_count, 4))
-    training_progress["val_mAP50-90"].append(stats[0])
-    training_progress["val_mAP50"].append(stats[1])
-    training_progress["val_mAR50-95"].append(stats[8])
-    # NOTE: you could add more stats if needed, stats[0] is mAP 50-95
-    if stats[0] > best_model_score:
-        best_model_score = stats[0]
-        best_model_weights = bench_train.model.state_dict()  # type: ignore
-        best_model_save_path = RESULTS_DIR / f"best_{MODEL_NAME}_{RUNTIME}.pth"
-        torch.save(best_model_weights, best_model_save_path)
-        logger.info(
-            f"New best model found at epoch {epoch + 1} with mAP50-90: {best_model_score}. Saved to {best_model_save_path}"
+def main():
+
+    args = Args(
+        model="tf_efficientdet_d0",
+        pretrained_backbone=False,
+        pretrained=True,
+        prefetcher=True,
+        device="cuda",
+        amp=False,
+        num_classes=3,
+        opt="momentum",
+        weight_decay=1e-5,
+        lr=0.008,
+        epochs=50,
+        dataset="coco",
+        root="/home/maindamian/efficientdet-pytorch/car_dd",
+        batch_size=8,
+        bench_labeler=False,
+        distributed=False,
+        pin_mem=False,
+        workers=4,
+        reprob=0.0,
+        remode="pixel",
+        recount=1,
+        runtime_stamp=dt.datetime.now().strftime("%Y%m%d-%H%M%S"),
+        torchscript=False,
+        initial_checkpoint="",
+        redundant_bias=None,
+        train_interpolation="random",
+    )
+
+    bench_train = create_model(
+        args.model,
+        bench_task="train",
+        num_classes=args.num_classes,
+        pretrained=args.pretrained,
+        redundant_bias=args.redundant_bias,
+        label_smoothing=args.smoothing,
+        legacy_focal=args.legacy_focal,
+        jit_loss=args.jit_loss,
+        soft_nms=args.soft_nms,
+        bench_labeler=args.bench_labeler,
+        checkpoint_path=args.initial_checkpoint,
+    )
+
+    bench_train_config = bench_train.config
+    bench_train.cuda()
+    logger.info("here")
+    optimizer = create_optimizer_v2(
+        bench_train,
+        opt=args.opt,
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+    )
+
+    lr_scheduler, num_epochs = create_scheduler_v2(optimizer)
+
+    loader_train, loader_eval, evaluator = create_datasets_and_loaders(
+        args, bench_train_config
+    )
+
+    parser_max_label = loader_train.dataset.parser.max_label  # type: ignore
+    config_num_classes = bench_train_config.num_classes
+
+    if parser_max_label != config_num_classes:
+        logger.error(
+            f"Number of classes in dataset ({parser_max_label}) does not match "
+            f"model config ({config_num_classes})."
         )
+        exit(1)
 
-    pd.DataFrame(training_progress).to_csv(
-        f"training_{MODEL_NAME}_{RUNTIME}.csv", index=False
+    saver = ResultSaver(
+        path=RESULTS_DIR / "effdet_v2",
+        name=f"{args.model}_{args.runtime_stamp}",
     )
 
-    logger.info(
-        f"Epoch {epoch + 1} completed. Loss: {training_progress['loss'][-1]}, Val mAP50-90: {training_progress['val_mAP50-90'][-1]}, Val mAP50: {training_progress['val_mAP50'][-1]}, Val mAR50-95: {training_progress['val_mAR50-95'][-1]}"
-    )
+    for epoch in range(args.epochs):
+        logger.info(f"Epoch {epoch + 1}/{args.epochs} starting...")
+
+        # Training and evaluation logic would go here
+        bench_train.train()
+
+        total_loss = 0.0
+        for inputs, targets in tqdm(loader_train):
+            output = bench_train(inputs, targets)
+            loss = output["loss"]
+            total_loss += loss.item()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        if lr_scheduler is not None:
+            lr_scheduler.step(epoch + 1)
+
+        bench_train.eval()
+        val_total_loss = 0.0
+        with torch.no_grad():
+            for val_inputs, val_targets in loader_eval:
+                val_output = bench_train(val_inputs, val_targets)
+                val_loss = val_output["loss"]
+                val_total_loss += val_loss.item()
+                evaluator.add_predictions(val_output["detections"], val_targets)
+
+                torch.cuda.synchronize()
+        val_map = evaluator.evaluate().item()  # type: ignore
+        evaluator.reset()
+        saver.save(
+            epoch=epoch + 1, loss=total_loss, val_map=val_map, val_loss=val_total_loss
+        ).plot(show=False)
+
+        logger.info(f"Epoch {epoch + 1}/{args.epochs} completed.")
 
 
-train_state_dict = bench_train.model.state_dict()  # type: ignore
-
-model_save_path = RESULTS_DIR / f"last_{MODEL_NAME}_{RUNTIME}.pth"
-logger.info(f"Training completed. Saving model to {model_save_path}")
-torch.save(train_state_dict, model_save_path)
-
-
-# EVALUATION
-
-logger.info("Starting evaluation phase")
-bench_pred = create_model(
-    model_name=MODEL_NAME,
-    bench_task="predict",
-    num_classes=NUM_CLASSES,
-    pretrained=True,
-    redundant_bias=None,
-    soft_nms=None,
-    checkpoint_path="",
-    checkpoint_ema=False,
-    **extra_args,
-)
-best_trained_path = RESULTS_DIR / f"best_{MODEL_NAME}_{RUNTIME}.pth"
-best_trained_state_dict = torch.load(best_trained_path)
-bench_pred.model.load_state_dict(best_trained_state_dict)  # type: ignore
-model_pred_config = bench_pred.config
-bench_pred = bench_pred.cuda()
-
-test_dataset = create_dataset_custom(
-    name="test",
-    img_dir=DATA_CAR_DD_DIR / "images" / "test",
-    ann_file=DATA_CAR_DD_DIR / "instances_test.json",
-)
-
-test_input_config = resolve_input_config({}, model_pred_config)
-test_loader = create_loader(
-    test_dataset,
-    input_size=test_input_config["input_size"],
-    batch_size=BATCH_SIZE,
-    use_prefetcher=True,
-    interpolation=test_input_config["interpolation"],
-    mean=test_input_config["mean"],
-    std=test_input_config["std"],
-    num_workers=4,
-    pin_mem=False,
-)
-logger.info(f"Len test loader: {len(test_loader)}")
-evaluator = CocoStatsEvaluator(test_dataset, distributed=False, pred_yxyx=False)
-bench_pred.eval()
-
-
-with torch.no_grad():
-    for input, target in tqdm(test_loader):
-        output = bench_pred(input, img_info=target)
-        evaluator.add_predictions(output, target)
-
-stats = evaluator.evaluate()
-stats = [round(s, 4) for s in stats]
-logger.info(
-    f"Test set evaluation stats: mAP50-90: {stats[0]}, mAP50: {stats[1]}, mAR50-95: {stats[8]}"
-)
+if __name__ == "__main__":
+    main()
