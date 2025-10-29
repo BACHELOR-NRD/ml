@@ -48,8 +48,8 @@ class FilteredDataset:
 
 
 def create_dataset_custom(
-    img_dir: Path,
-    ann_file: Path,
+    img_dir: Path | str,
+    ann_file: Path | str,
     has_labels: bool,
     limit: Optional[int] = None,
     limit_mode: str = "first",
