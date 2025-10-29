@@ -49,14 +49,12 @@ def create_datasets_and_loaders(
     input_config = resolve_input_config(args, model_config)
 
     dataset_train = create_dataset_custom(
-        name="train",
         img_dir=DATA_DIR / "car_dd" / "images" / "train",
         ann_file=DATA_DIR / "car_dd" / "instances_train_curated.json",
         has_labels=True,
     )
 
     dataset_eval = create_dataset_custom(
-        name="val",
         img_dir=DATA_DIR / "car_dd" / "images" / "val",
         ann_file=DATA_DIR / "car_dd" / "instances_val_curated.json",
         has_labels=True,

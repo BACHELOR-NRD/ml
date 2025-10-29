@@ -2,14 +2,11 @@ import os
 import json
 import datetime as dt
 from pathlib import Path
-from copy import deepcopy
 from tempfile import NamedTemporaryFile
-from typing import List, Literal, Optional, Union, cast
-from collections import OrderedDict
+from typing import List, Optional, cast
 
 import torch
 import torch.distributed as dist
-from effdet.data.dataset_config import Coco2017Cfg
 from effdet.data.parsers import CocoParserCfg, create_parser
 from effdet.data.dataset import DetectionDatset
 from effdet.evaluator import Evaluator
@@ -51,7 +48,6 @@ class FilteredDataset:
 
 
 def create_dataset_custom(
-    name: str,
     img_dir: Path,
     ann_file: Path,
     has_labels: bool,
