@@ -27,7 +27,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     def get_required_metadata_keys(self) -> List[str]:
         return ["data_yaml", "weights"]
 
-    def fit(self):
+    def fit(self) -> "UltralyticsAdapter":
         logger.info("Starting training...")
 
         seed = self.get_metadata_value("seed", 42)
@@ -45,6 +45,8 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             save=save,
             **self.hparams,
         )
+
+        return self
 
     def evaluate(self) -> Dict[str, float]:
         logger.info("Starting evaluation...")
@@ -68,10 +70,12 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
 class YoloUltralyticsAdapter(UltralyticsAdapter):
 
-    def setup(self):
+    def setup(self) -> "YoloUltralyticsAdapter":
         model_version = self.get_metadata_value("weights")
         self.model = YOLO(model_version)
         self.model.to(self.device)
+
+        return self
 
     def clone(self) -> "YoloUltralyticsAdapter":
         return YoloUltralyticsAdapter(
@@ -84,10 +88,12 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
 
 class RtdetrUltralyticsAdapter(UltralyticsAdapter):
 
-    def setup(self):
+    def setup(self) -> "RtdetrUltralyticsAdapter":
         model_version = self.get_metadata_value("weights")
         self.model = RTDETR(model_version)
         self.model.to(self.device)
+
+        return self
 
     def clone(self) -> "RtdetrUltralyticsAdapter":
         return RtdetrUltralyticsAdapter(

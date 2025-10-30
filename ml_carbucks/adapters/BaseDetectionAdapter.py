@@ -125,11 +125,11 @@ class BaseDetectionAdapter(ABC):
         pass
 
     @abstractmethod
-    def setup(self):
+    def setup(self) -> "BaseDetectionAdapter":
         pass
 
     @abstractmethod
-    def fit(self):
+    def fit(self) -> "BaseDetectionAdapter":
         pass
 
     @abstractmethod
@@ -159,6 +159,9 @@ class BaseDetectionAdapter(ABC):
 
     def set_params(self, params: Dict[str, Any]) -> "BaseDetectionAdapter":
         """Set hyperparameters and return self for chaining."""
+        if self.model is not None:
+            raise ValueError("Cannot set parameters after model has been created.")
+
         possible_keys = self.get_possible_hyper_keys()
         for key, value in params.items():
             if key in possible_keys:

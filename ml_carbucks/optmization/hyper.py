@@ -8,7 +8,6 @@ from optuna import Trial
 import pickle as pkl
 from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
 from ml_carbucks.adapters.UltralyticsAdapter import (
-    UltralyticsAdapter,
     YoloUltralyticsAdapter,
     RtdetrUltralyticsAdapter,
 )
@@ -79,7 +78,7 @@ def execute_simple_study(
     result_dir_path = results_dir / "optuna" / f"hyper_{name}"
 
     result_dir_path.mkdir(parents=True, exist_ok=True)
-    model_path = adapter.save_model(result_dir_path)
+    model_path = adapter.save(result_dir_path)
     hyper_results = {
         "params": best_trial.params,
         "value": best_trial.value if is_single_objective else best_trial.values[0],
@@ -152,7 +151,7 @@ if __name__ == "__main__":
                 classes=classes,
                 metadata={
                     "data_yaml": "/home/bachelor/ml-carbucks/data/car_dd/dataset.yaml",
-                    "weights": "yolo11l.pt",
+                    "weights": "rtdetr-l.pt",
                 },
             ),
             FasterRcnnAdapter(
@@ -164,16 +163,16 @@ if __name__ == "__main__":
                     "val_ann_file": DATA_CAR_DD_DIR / "instances_val.json",
                 },
             ),
-            # EfficientDetAdapter(
-            #     classes=classes,
-            #     metadata={
-            #         "model_version": "efficientdet_d0",
-            #         "train_img_dir": DATA_CAR_DD_DIR / "images" / "train",
-            #         "train_ann_file": DATA_CAR_DD_DIR / "instances_train_curated.json",
-            #         "val_img_dir": DATA_CAR_DD_DIR / "images" / "val",
-            #         "val_ann_file": DATA_CAR_DD_DIR / "instances_val_curated.json",
-            #     },
-            # ),
+            EfficientDetAdapter(
+                classes=classes,
+                metadata={
+                    "weights": "efficientdet_d0",
+                    "train_img_dir": DATA_CAR_DD_DIR / "images" / "train",
+                    "train_ann_file": DATA_CAR_DD_DIR / "instances_train_curated.json",
+                    "val_img_dir": DATA_CAR_DD_DIR / "images" / "val",
+                    "val_ann_file": DATA_CAR_DD_DIR / "instances_val_curated.json",
+                },
+            ),
         ],
         runtime=dt.datetime.now().strftime("%Y%m%d_%H%M%S"),
         results_dir=RESULTS_DIR,
