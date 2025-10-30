@@ -192,13 +192,18 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     def predict(self, images: Any) -> List[Dict[str, Any]]:
         raise NotImplementedError("Predict method is not yet implemented.")
 
-    def setup(self):
+    def setup(self) -> "FasterRcnnAdapter":
         logger.debug("Creating Faster R-CNN model...")
+
+        img_size = self.get_param("img_size")
+
         weights = self.get_metadata_value("weights", "DEFAULT")
 
         if weights == "DEFAULT":
             self.model = fasterrcnn_resnet50_fpn(
-                weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT
+                weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT,
+                min_size=img_size,
+                max_size=img_size,
             )
             in_features = self.model.roi_heads.box_predictor.cls_score.in_features  # type: ignore
             self.model.roi_heads.box_predictor = FastRCNNPredictor(
@@ -216,6 +221,8 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             )
 
         self.model.to(self.device)
+
+        return self
 
     def _create_optimizer(self):
         lr1 = self.get_param("lr_backbone", 5e-5)
@@ -239,7 +246,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         return torch.optim.AdamW(params)
 
-    def fit(self):
+    def fit(self) -> "FasterRcnnAdapter":
         logger.info("Starting training...")
         self.model.train()
 
@@ -286,6 +293,8 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
                 optimizer.step()
 
                 total_loss += loss.item()  # type: ignore
+
+        return self
 
     def evaluate(self) -> Dict[str, float]:
         logger.info("Starting evaluation...")
