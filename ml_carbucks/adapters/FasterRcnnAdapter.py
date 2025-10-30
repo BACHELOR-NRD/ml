@@ -179,9 +179,10 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     def predict(self, images: Any) -> List[Dict[str, Any]]:
         raise NotImplementedError("Predict method is not yet implemented.")
 
-    def save_model(self, save_path: Path | str):
-        logger.info(f"Saving model to {save_path}...")
+    def save_model(self, dir: Path | str) -> Path:
+        save_path = Path(dir) / "model.pth"
         torch.save(self.model.state_dict(), save_path)
+        return save_path
 
     def _create_transforms(self, is_training: bool) -> A.Compose:
         img_size = self.hparams["img_size"]

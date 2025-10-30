@@ -168,7 +168,6 @@ def execute_study(
         direction=direction,
         study_name=name,
         load_if_exists=True,
-        storage=f"sqlite:///{sql_path}",
     )
 
     for trial_params in enqueue_trials:
