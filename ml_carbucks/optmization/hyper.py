@@ -148,31 +148,22 @@ if __name__ == "__main__":
                     "weights": "yolo11l.pt",
                 },
             ),
-            # UltralyticsAdapter(
-            #     classes=classes,
-            #     metadata={
-            #         "model_type": "yolo",
-            #         "model_version": "yolo11l.pt",
-            #         "data_yaml": "/home/bachelor/ml-carbucks/data/car_dd/dataset.yaml",
-            #     },
-            # ),
-            # UltralyticsAdapter(
-            #     classes=classes,
-            #     metadata={
-            #         "model_type": "rtdetr",
-            #         "model_version": "rtdetr-l.pt",
-            #         "data_yaml": "/home/bachelor/ml-carbucks/data/car_dd/dataset.yaml",
-            #     },
-            # ),
-            # FasterRcnnAdapter(
-            #     classes=classes,
-            #     metadata={
-            #         "train_img_dir": DATA_CAR_DD_DIR / "images" / "train",
-            #         "train_ann_file": DATA_CAR_DD_DIR / "instances_train.json",
-            #         "val_img_dir": DATA_CAR_DD_DIR / "images" / "val",
-            #         "val_ann_file": DATA_CAR_DD_DIR / "instances_val.json",
-            #     },
-            # ),
+            RtdetrUltralyticsAdapter(
+                classes=classes,
+                metadata={
+                    "data_yaml": "/home/bachelor/ml-carbucks/data/car_dd/dataset.yaml",
+                    "weights": "yolo11l.pt",
+                },
+            ),
+            FasterRcnnAdapter(
+                classes=classes,
+                metadata={
+                    "train_img_dir": DATA_CAR_DD_DIR / "images" / "train",
+                    "train_ann_file": DATA_CAR_DD_DIR / "instances_train.json",
+                    "val_img_dir": DATA_CAR_DD_DIR / "images" / "val",
+                    "val_ann_file": DATA_CAR_DD_DIR / "instances_val.json",
+                },
+            ),
             # EfficientDetAdapter(
             #     classes=classes,
             #     metadata={
