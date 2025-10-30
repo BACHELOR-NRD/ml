@@ -11,77 +11,44 @@ logger = setup_logger(__name__)
 
 class UltralyticsAdapter(BaseDetectionAdapter):
 
-    def load_model(self):
-        logger.info("Loading Ultralytics model...")
+    def get_possible_hyper_keys(self) -> List[str]:
+        # NOTE: This is not an exhaustive list of all possible hyperparameters.
+        return [
+            "imgsz",
+            "optimizer",
+            "epochs",
+            "batch",
+            "lr0",
+            "momentum",
+            "weight_decay",
+            "patience",
+        ]
 
-        if self.model_path and self.model_path.exists():
-            self._load_existing_model()
-        else:
-            self._create_model()
-
-        self.model.to(self.device)
-
-    def _create_model(self):
-        model_type = self.metadata.get("model_type", None)
-        model_version = self.metadata.get("model_version", None)
-
-        if not model_type or not model_version:
-            raise ValueError(
-                "model_type and model_version must be specified in metadata to create a new model."
-            )
-
-        if model_type == "yolo":
-            self.model = YOLO(model_version)
-            logger.info(f"Created new YOLO model: {model_version}")
-
-        elif model_type == "rtdetr":
-            self.model = RTDETR(model_version)
-            logger.info(f"Created new RTDETR model: {model_version}")
-
-    def _load_existing_model(self):
-        model_type = self.hparams.get("model_type", None)
-
-        if not model_type:
-            raise ValueError(
-                "model_type must be specified in hparams to load an existing model."
-            )
-
-        if model_type == "yolo":
-            self.model = YOLO(str(self.model_path))
-            logger.info(f"Loaded existing YOLO model from {self.model_path}")
-
-        elif model_type == "rtdetr":
-            self.model = RTDETR(str(self.model_path))
-            logger.info(f"Loaded existing RTDETR model from {self.model_path}")
-
-    def setup(self):
-        self.data_yaml_path = self.datasets.get("data_yaml", None)
-        if not self.data_yaml_path:
-            raise ValueError(
-                "data_yaml path must be provided in datasets to load data."
-            )
+    def get_required_metadata_keys(self) -> List[str]:
+        return ["data_yaml", "weights"]
 
     def fit(self):
         logger.info("Starting training...")
 
-        seed = self.metadata.get("seed", 42)
-        project_dir = self.metadata.get("project_dir", None)
-        name = self.metadata.get("run_name", "ultralytics_run")
+        seed = self.get_metadata_value("seed", 42)
+        project_dir = self.get_metadata_value("project_dir", None)
+        save = self.get_metadata_value("save", False)
+        verbose = self.get_metadata_value("verbose", False)
+        data_yaml = self.get_metadata_value("data_yaml")
 
-        self.model.train(
-            data=self.data_yaml_path,
+        self.model.train(  # type: ignore
+            data=data_yaml,
             seed=seed,
-            name=name,
+            name=project_dir,
             val=False,
-            verbose=False,
-            save=False,
-            project=project_dir,
+            verbose=verbose,
+            save=save,
             **self.hparams,
         )
 
     def evaluate(self) -> Dict[str, float]:
         logger.info("Starting evaluation...")
-        results = self.model.val(data=self.data_yaml_path)
+        results = self.model.val(data=self.get_metadata_value("data_yaml"))  # type: ignore
 
         metrics = {
             "map_50": results.results_dict["metrics/mAP50(B)"],
@@ -93,6 +60,39 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     def predict(self, images: Any) -> List[Dict[str, Any]]:
         raise NotImplementedError("Predict method is not yet implemented.")
 
-    def save_model(self, save_path: Path | str):
-        logger.info(f"Saving model to {save_path}...")
-        self.model.save(save_path)
+    def save(self, dir: Path | str) -> Path:
+        save_path = Path(dir) / "model.pt"
+        self.model.save(save_path)  # type: ignore
+        return save_path
+
+
+class YoloUltralyticsAdapter(UltralyticsAdapter):
+
+    def setup(self):
+        model_version = self.get_metadata_value("weights")
+        self.model = YOLO(model_version)
+        self.model.to(self.device)
+
+    def clone(self) -> "YoloUltralyticsAdapter":
+        return YoloUltralyticsAdapter(
+            classes=self.classes.copy(),
+            metadata=self.metadata.copy(),
+            hparams=self.hparams.copy(),
+            device=self.device,
+        )
+
+
+class RtdetrUltralyticsAdapter(UltralyticsAdapter):
+
+    def setup(self):
+        model_version = self.get_metadata_value("weights")
+        self.model = RTDETR(model_version)
+        self.model.to(self.device)
+
+    def clone(self) -> "RtdetrUltralyticsAdapter":
+        return RtdetrUltralyticsAdapter(
+            classes=self.classes.copy(),
+            metadata=self.metadata.copy(),
+            hparams=self.hparams.copy(),
+            device=self.device,
+        )
