@@ -10,35 +10,45 @@ class TrialParamWrapper:
 
     def _get_ultralytics_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         params = {
-            "lr0": trial.suggest_float("lr0", 1e-5, 1e-2, log=True),
-            "momentum": trial.suggest_float("momentum", 0.6, 0.98),
-            "weight_decay": trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True),
-            "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
+            "epochs": trial.suggest_int("epochs", 10, 50),
+            "batch": trial.suggest_categorical("batch", [8, 16]),
+            "lr0": trial.suggest_float("lr0", 1e-4, 1e-2, log=True),
+            "momentum": trial.suggest_float("momentum", 0.3, 0.99),
+            "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
+            "patience": trial.suggest_int("patience", 10, 30),
         }
         return params
 
     def _get_fasterrcnn_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         params = {
-            "lr": trial.suggest_float("lr", 1e-5, 1e-2, log=True),
-            "momentum": trial.suggest_float("momentum", 0.6, 0.98),
-            "weight_decay": trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True),
-            "batch_size": trial.suggest_categorical("batch_size", [4, 8, 16]),
+            "lr_backbone": trial.suggest_float("lr_backbone", 1e-5, 1e-3, log=True),
+            "lr_head": trial.suggest_float("lr_head", 1e-4, 1e-2, log=True),
+            "weight_decay_backbone": trial.suggest_float(
+                "weight_decay_backbone", 1e-6, 1e-3, log=True
+            ),
+            "weight_decay_head": trial.suggest_float(
+                "weight_decay_head", 1e-5, 1e-2, log=True
+            ),
+            "batch_size": trial.suggest_categorical("batch_size", [4, 8, 10]),
+            "img_size": trial.suggest_categorical("img_size", [256, 512, 640]),
         }
         return params
 
     def _get_efficientdet_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         params = {
-            "lr": trial.suggest_float("lr", 1e-5, 1e-2, log=True),
-            "momentum": trial.suggest_float("momentum", 0.6, 0.98),
-            "weight_decay": trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True),
+            "lr": trial.suggest_float("lr", 1e-4, 1e-1, log=True),
+            "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
             "batch_size": trial.suggest_categorical("batch_size", [4, 8, 16]),
+            "img_size": trial.suggest_categorical("img_size", [256, 512, 640]),
+            "opt": trial.suggest_categorical("opt", ["momentum", "adam"]),
         }
         return params
 
     def get_param(self, trial: optuna.Trial, adapter_name: str) -> Dict[str, Any]:
 
         param_pairs = [
-            ("ultralytics", self._get_ultralytics_params),
+            ("yolo", self._get_ultralytics_params),
+            ("rtdetr", self._get_ultralytics_params),
             ("fasterrcnn", self._get_fasterrcnn_params),
             ("efficientdet", self._get_efficientdet_params),
         ]

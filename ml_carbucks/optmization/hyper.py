@@ -98,10 +98,11 @@ def create_objective(adapter: BaseDetectionAdapter) -> Callable:
 
         params = TrialParamWrapper().get_param(trial, adapter.__class__.__name__)
 
-        trial_adapter = adapter.clone().set_params(params)
-
+        trial_adapter = adapter.clone()
+        trial_adapter = trial_adapter.set_params(params)
         trial_adapter.setup()
         trial_adapter.fit()
+
         metrics = trial_adapter.evaluate()
 
         trial.set_user_attr("params", params)
