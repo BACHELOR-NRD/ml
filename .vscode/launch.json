@@ -38,5 +38,14 @@
             "justMyCode": false
         },
 
+        {
+            "name": "Hyper Adapters",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ml_carbucks/optmization/hyper.py",
+            "console": "internalConsole",
+            "justMyCode": false
+        },
+
     ]
 }

@@ -34,6 +34,7 @@ def execute_simple_study(
     sql_path = (
         results_dir / "optuna" / f"study_{name}" / f"{adapter.__class__.__name__}.db"
     )
+    sql_path.parent.mkdir(parents=True, exist_ok=True)
 
     study = optuna.create_study(
         direction="maximize",
