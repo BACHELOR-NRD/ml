@@ -96,20 +96,32 @@ def create_objective(adapter: BaseDetectionAdapter) -> Callable:
 
     def objective(trial: Trial) -> float:
 
-        params = TrialParamWrapper().get_param(trial, adapter.__class__.__name__)
+        try:
+            params = TrialParamWrapper().get_param(trial, adapter.__class__.__name__)
 
-        trial_adapter = adapter.clone()
-        trial_adapter = trial_adapter.set_params(params)
-        trial_adapter.setup()
-        trial_adapter.fit()
+            trial_adapter = adapter.clone()
+            trial_adapter = trial_adapter.set_params(params)
+            trial_adapter.setup()
+            trial_adapter.fit()
 
-        metrics = trial_adapter.evaluate()
+            metrics = trial_adapter.evaluate()
 
-        trial.set_user_attr("params", params)
-        trial.set_user_attr("metrics", metrics)
+            trial.set_user_attr("params", params)
+            trial.set_user_attr("metrics", metrics)
 
-        score = metrics["map_50_95"]
-        return score
+            score = metrics["map_50_95"]
+            return score
+        except optuna.exceptions.TrialPruned as e:
+            logger.error("Trial pruned")  # NOTE: this should be replace to logger
+            trial.set_user_attr("error", str(e))
+
+            raise e
+        except Exception as e:
+            logger.error(f"Error in objective: {e}")
+            trial.set_user_attr("error", str(e))
+            raise e
+        finally:
+            del trial_adapter  # type: ignore
 
     return objective
 
@@ -167,7 +179,7 @@ if __name__ == "__main__":
             EfficientDetAdapter(
                 classes=classes,
                 metadata={
-                    "weights": "efficientdet_d0",
+                    "version": "efficientdet_d0",
                     "train_img_dir": DATA_CAR_DD_DIR / "images" / "train",
                     "train_ann_file": DATA_CAR_DD_DIR / "instances_train_curated.json",
                     "val_img_dir": DATA_CAR_DD_DIR / "images" / "val",
