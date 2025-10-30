@@ -172,6 +172,9 @@ class BaseDetectionAdapter(ABC):
     def get_metadata_value(self, key: str, default: Any = None) -> Any:
         return self.metadata.get(key, default)
 
+    def get_param(self, key: str, default: Any = None) -> Any:
+        return self.hparams.get(key, default)
+
     def health_check(self):
         required_keys = self.get_required_metadata_keys()
         missing_keys = [key for key in required_keys if key not in self.metadata]
