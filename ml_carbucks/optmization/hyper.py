@@ -161,13 +161,6 @@ if __name__ == "__main__":
     classes = ["scratch", "dent", "crack"]
     main(
         adapter_list=[
-            # YoloUltralyticsAdapter(
-            #     classes=classes,
-            #     metadata={
-            #         "data_yaml": "/home/bachelor/ml-carbucks/data/car_dd/dataset.yaml",
-            #         "weights": "yolo11l.pt",
-            #     },
-            # ),
             RtdetrUltralyticsAdapter(
                 classes=classes,
                 metadata={
@@ -185,6 +178,13 @@ if __name__ == "__main__":
                     "val_ann_file": DATA_CAR_DD_DIR / "instances_val_curated.json",
                 },
             ),
+            YoloUltralyticsAdapter(
+                classes=classes,
+                metadata={
+                    "data_yaml": "/home/bachelor/ml-carbucks/data/car_dd/dataset.yaml",
+                    "weights": "yolo11n.pt",
+                },
+            ),
             FasterRcnnAdapter(
                 classes=classes,
                 metadata={
@@ -197,7 +197,7 @@ if __name__ == "__main__":
         ],
         runtime=dt.datetime.now().strftime("%Y%m%d_%H%M%S"),
         results_dir=RESULTS_DIR,
-        n_trials=50,
+        n_trials=10,
         patience=15,
         min_percentage_improvement=0.005,
         optimization_timeout=6 * 3600,  # 6 hours
