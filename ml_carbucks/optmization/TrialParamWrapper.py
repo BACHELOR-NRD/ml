@@ -16,7 +16,7 @@ class TrialParamWrapper:
             "momentum": trial.suggest_float("momentum", 0.3, 0.99),
             "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
             "patience": trial.suggest_int("patience", 10, 30),
-            "imgsz": trial.suggest_categorical("imgsz", [256, 512, 640]),
+            "imgsz": trial.suggest_categorical("imgsz", [256, 512]),
         }
         return params
 
@@ -31,7 +31,7 @@ class TrialParamWrapper:
                 "weight_decay_head", 1e-5, 1e-2, log=True
             ),
             "batch_size": trial.suggest_categorical("batch_size", [4, 8, 10]),
-            "img_size": trial.suggest_categorical("img_size", [256, 512, 640]),
+            "img_size": trial.suggest_categorical("img_size", [256, 512]),
         }
         return params
 
@@ -40,7 +40,7 @@ class TrialParamWrapper:
             "lr": trial.suggest_float("lr", 1e-4, 1e-1, log=True),
             "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
             "batch_size": trial.suggest_categorical("batch_size", [4, 8, 16]),
-            "img_size": trial.suggest_categorical("img_size", [256, 512, 640]),
+            "img_size": trial.suggest_categorical("img_size", [256, 512]),
             "opt": trial.suggest_categorical("opt", ["momentum", "adam"]),
         }
         return params
