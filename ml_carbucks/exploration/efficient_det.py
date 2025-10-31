@@ -1,5 +1,4 @@
 import datetime as dt
-from pathlib import Path
 from typing import Any
 
 from tqdm import tqdm
@@ -17,7 +16,7 @@ from effdet.data import resolve_input_config, SkipSubset  # noqa F401
 from effdet.anchors import Anchors, AnchorLabeler
 import torch  # noqa F401
 
-from ml_carbucks.utils.coco import create_dataset_custom
+from ml_carbucks.utils.effdet_extension import create_dataset_custom
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.result_saver import ResultSaver  # noqa F401
 from ml_carbucks import RESULTS_DIR, DATA_DIR

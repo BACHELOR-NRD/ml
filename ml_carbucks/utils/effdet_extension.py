@@ -1,19 +1,23 @@
 import os
 import json
+import bisect
 import datetime as dt
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import List, Optional, cast
+from typing import Iterable, List, Optional, cast
 
 import torch
+import numpy as np
+from PIL import Image
 import torch.distributed as dist
+from torch.utils.data import ConcatDataset
 from effdet.data.parsers import CocoParserCfg, create_parser
 from effdet.data.dataset import DetectionDatset
 from effdet.evaluator import Evaluator
 from pycocotools.cocoeval import COCOeval
 
 
-class FilteredDataset:
+class FilteredDetectionDataset:
     """A dataset wrapper that only exposes a subset of the base dataset.
     This is useful to limit the number of images used during training or evaluation."""
 
@@ -45,6 +49,65 @@ class FilteredDataset:
     def transform(self, t):
         # When create_loader sets dataset.transform = ..., delegate to base dataset
         self.base_dataset.transform = t
+
+
+class ConcatDetectionDataset(ConcatDataset):
+    """
+    Concatenation of multiple DetectionDatset instances.
+    Seamless access to parser(s) and transform.
+    """
+
+    def __init__(self, datasets: Iterable):
+        super().__init__(datasets)
+        self.datasets = list(datasets)
+        assert all(
+            hasattr(d, "parser") for d in self.datasets
+        ), "All datasets must be DetectionDatset instances"
+
+    def __getitem__(self, idx):
+        # Standard ConcatDataset logic
+        if idx < 0:
+            if -idx > len(self):
+                raise ValueError(
+                    "absolute value of index should not exceed dataset length"
+                )
+            idx = len(self) + idx
+
+        dataset_idx = bisect.bisect_right(self.cumulative_sizes, idx)
+        if dataset_idx == 0:
+            sample_idx = idx
+        else:
+            sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
+
+        img, target = self.datasets[dataset_idx][sample_idx]
+
+        # Ensure img is tensor
+        if isinstance(img, Image.Image):
+            img = np.array(img)  # HWC, uint8
+
+        return img, target
+
+    # Single parser for compatibility
+    @property
+    def parser(self):
+        return self.datasets[0].parser  # type: ignore
+
+    # All parsers
+    @property
+    def parsers(self) -> List:
+        return [d.parser for d in self.datasets]  # type: ignore
+
+    # Transform getter/setter: applies to all datasets
+    @property
+    def transform(self):
+        return self.datasets[
+            0
+        ].transform  # assume all datasets share same transform # type: ignore
+
+    @transform.setter
+    def transform(self, t):
+        for d in self.datasets:
+            d.transform = t  # type: ignore
 
 
 def create_dataset_custom(
@@ -107,7 +170,7 @@ def create_dataset_custom(
         else:
             # default 'first' behaviour
             indices = list(range(n))
-        dataset = FilteredDataset(dataset, indices)
+        dataset = FilteredDetectionDataset(dataset, indices)
 
     return dataset
 

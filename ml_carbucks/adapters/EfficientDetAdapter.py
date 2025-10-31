@@ -1,20 +1,24 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import torch
-from effdet import create_model, create_loader
+from tqdm import tqdm
 from effdet.data import resolve_input_config
+from effdet import create_model, create_loader
 from effdet.anchors import Anchors, AnchorLabeler
 from timm.optim._optim_factory import create_optimizer_v2
-from tqdm import tqdm
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     BaseDetectionAdapter,
     ADAPTER_PREDICTION,
 )
-from ml_carbucks.utils.coco import CocoStatsEvaluator, create_dataset_custom
+from ml_carbucks.utils.effdet_extension import (
+    CocoStatsEvaluator,
+    ConcatDetectionDataset,
+    create_dataset_custom,
+)
 from ml_carbucks.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -87,7 +91,9 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         return self
 
-    def fit(self, img_dir: str | Path, ann_file: str | Path) -> "EfficientDetAdapter":
+    def fit(
+        self, datasets: List[Tuple[str | Path, str | Path]]
+    ) -> "EfficientDetAdapter":
         logger.info("Starting training...")
         self.model.train()
 
@@ -97,14 +103,18 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         lr = self.lr
         weight_decay = self.weight_decay
 
+        all_datasets = []
+        for img_dir, ann_file in datasets:
+            dataset = create_dataset_custom(
+                img_dir=img_dir,
+                ann_file=ann_file,
+                has_labels=True,
+            )
+            all_datasets.append(dataset)
+
+        train_dataset = ConcatDetectionDataset(all_datasets)
+
         input_config = resolve_input_config(dict(), self.model.config)
-
-        train_dataset = create_dataset_custom(
-            img_dir=img_dir,
-            ann_file=ann_file,
-            has_labels=True,
-        )
-
         train_loader = create_loader(
             train_dataset,
             input_size=input_config["input_size"],
@@ -127,7 +137,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             collate_fn=None,
         )
 
-        parser_max_label = train_loader.dataset.parser.max_label  # type: ignore
+        parser_max_label = train_loader.dataset.parsers[0].max_label  # type: ignore
         config_num_classes = self.model.config.num_classes
 
         if parser_max_label != config_num_classes:
@@ -158,19 +168,25 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         return self
 
-    def evaluate(self, img_dir: str | Path, ann_file: str | Path) -> Dict[str, float]:
+    def evaluate(
+        self, datasets: List[Tuple[str | Path, str | Path]]
+    ) -> Dict[str, float]:
         self.model.eval()
 
         batch_size = self.batch_size
 
-        dataset_val = create_dataset_custom(
-            img_dir=img_dir,
-            ann_file=ann_file,
-            has_labels=True,
-        )
+        all_datasets = []
+        for img_dir, ann_file in datasets:
+            dataset = create_dataset_custom(
+                img_dir=img_dir,
+                ann_file=ann_file,
+                has_labels=True,
+            )
+            all_datasets.append(dataset)
+
+        dataset_val = ConcatDetectionDataset(all_datasets)
 
         input_config = resolve_input_config(dict(), self.model.config)
-
         val_loader = create_loader(
             dataset_val,
             input_size=input_config["input_size"],

@@ -4,7 +4,7 @@ import json
 import yaml
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import torch
 from ultralytics.models.yolo import YOLO
@@ -32,8 +32,17 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     verbose: bool = True
     project_dir: str | Path | None = None
 
-    def fit(self, img_dir: str | Path, ann_file: str | Path) -> "UltralyticsAdapter":
+    def fit(
+        self, datasets: List[Tuple[str | Path, str | Path]]
+    ) -> "UltralyticsAdapter":
         logger.info("Starting training...")
+
+        img_dir, ann_file = datasets[0]
+        if len(datasets) > 1:
+            logger.warning(
+                "Multiple datasets provided for training, but only the first will be used."
+            )
+            logger.warning("Multi-dataset training is not yet supported.")
 
         logger.info("Converting COCO annotations to YOLO format...")
         data_yaml = self.coco_to_yolo(str(img_dir), str(ann_file))
@@ -58,8 +67,17 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
         return self
 
-    def evaluate(self, img_dir: str | Path, ann_file: str | Path) -> Dict[str, float]:
+    def evaluate(
+        self, datasets: List[Tuple[str | Path, str | Path]]
+    ) -> Dict[str, float]:
         logger.info("Starting evaluation...")
+
+        img_dir, ann_file = datasets[0]
+        if len(datasets) > 1:
+            logger.warning(
+                "Multiple datasets provided for evaluation, but only the first will be used."
+            )
+            logger.warning("Multi-dataset evaluation is not yet supported.")
 
         logger.info("Converting COCO annotations to YOLO format...")
         data_yaml = self.coco_to_yolo(str(img_dir), str(ann_file))

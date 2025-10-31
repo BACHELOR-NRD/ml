@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, TypedDict
+from typing import Any, Dict, List, Tuple, TypedDict
 from dataclasses import dataclass, field
 
 from numpy.typing import NDArray
@@ -49,11 +49,17 @@ class BaseDetectionAdapter(ABC):
         pass
 
     @abstractmethod
-    def fit(self, img_dir: str | Path, ann_file: str | Path) -> "BaseDetectionAdapter":
+    # def fit(self, img_dir: str | Path, ann_file: str | Path) -> "BaseDetectionAdapter":
+    def fit(
+        self, datasets: List[Tuple[str | Path, str | Path]]
+    ) -> "BaseDetectionAdapter":
         pass
 
     @abstractmethod
-    def evaluate(self, img_dir: str | Path, ann_file: str | Path) -> Dict[str, float]:
+    # def evaluate(self, img_dir: str | Path, ann_file: str | Path) -> Dict[str, float]:
+    def evaluate(
+        self, datasets: List[Tuple[str | Path, str | Path]]
+    ) -> Dict[str, float]:
         pass
 
     @abstractmethod
