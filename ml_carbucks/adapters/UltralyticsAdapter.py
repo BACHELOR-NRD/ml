@@ -62,8 +62,8 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     def predict(self, images: Any) -> List[Dict[str, Any]]:
         raise NotImplementedError("Predict method is not yet implemented.")
 
-    def save(self, dir: Path | str) -> Path:
-        save_path = Path(dir) / "model.pt"
+    def save(self, dir: Path | str, prefix: str = "") -> Path:
+        save_path = Path(dir) / f"{prefix}model.pt"
         self.model.save(save_path)  # type: ignore
         return save_path
 

@@ -146,7 +146,7 @@ class BaseDetectionAdapter(ABC):
         pass
 
     @abstractmethod
-    def save(self, dir: Path | str) -> Path:
+    def save(self, dir: Path | str, prefix: str = "") -> Path:
         """Save the model weights to the specified path."""
         pass
 

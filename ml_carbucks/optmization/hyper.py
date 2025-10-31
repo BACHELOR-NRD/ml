@@ -1,3 +1,4 @@
+from functools import partial
 from pathlib import Path
 from typing import Callable, Optional
 import datetime as dt
@@ -7,12 +8,12 @@ from optuna import Trial
 
 import pickle as pkl
 from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
-from ml_carbucks.adapters.UltralyticsAdapter import (
+from ml_carbucks.adapters.UltralyticsAdapter import (  # noqa: F401
     YoloUltralyticsAdapter,
     RtdetrUltralyticsAdapter,
 )
-from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter
-from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter
+from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter  # noqa: F401
+from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter  # noqa: F401
 from ml_carbucks.optmization.EarlyStoppingCallback import create_early_stopping_callback
 from ml_carbucks.optmization.TrialParamWrapper import TrialParamWrapper
 from ml_carbucks.utils.logger import setup_logger
@@ -31,6 +32,9 @@ def execute_simple_study(
     min_percentage_improvement: float = 0.01,
     optimization_timeout: Optional[float] = None,
 ):
+    result_dir_path = results_dir / "optuna" / f"hyper_{name}"
+    result_dir_path.mkdir(parents=True, exist_ok=True)
+
     sql_path = (
         results_dir / "optuna" / f"study_{name}" / f"{adapter.__class__.__name__}.db"
     )
@@ -76,14 +80,12 @@ def execute_simple_study(
     else:
         best_trial = study.best_trial
 
-    result_dir_path = results_dir / "optuna" / f"hyper_{name}"
-
-    result_dir_path.mkdir(parents=True, exist_ok=True)
-    model_path = adapter.save(result_dir_path)
+    # NOTE: the best model would have to be retrained so that it could be saved properly
+    # model_path = adapter.save(result_dir_path)
     hyper_results = {
         "params": best_trial.params,
         "value": best_trial.value if is_single_objective else best_trial.values[0],
-        "model_path": model_path,
+        # "model_path": model_path,
         "study_name": name,
         "adapter": adapter.__class__.__name__,
         "n_trials": len(completed_trials),
@@ -93,7 +95,7 @@ def execute_simple_study(
         pkl.dump(hyper_results, f)
 
 
-def create_objective(adapter: BaseDetectionAdapter) -> Callable:
+def create_objective(adapter: BaseDetectionAdapter, results_dir: Path) -> Callable:
 
     def objective(trial: Trial) -> float:
 
@@ -106,6 +108,11 @@ def create_objective(adapter: BaseDetectionAdapter) -> Callable:
             trial_adapter.fit()
 
             metrics = trial_adapter.evaluate()
+
+            trial_adapter.save(
+                dir=results_dir,
+                prefix=f"trial_{trial.number}_{adapter.__class__.__name__}",
+            )
 
             trial.set_user_attr("params", params)
             trial.set_user_attr("metrics", metrics)
@@ -142,7 +149,7 @@ def main(
             name=runtime,
             results_dir=results_dir,
             n_trials=n_trials,
-            create_objective_func=create_objective,
+            create_objective_func=partial(create_objective, results_dir=results_dir),
             adapter=adapter,
             patience=patience,
             min_percentage_improvement=min_percentage_improvement,
@@ -154,27 +161,18 @@ if __name__ == "__main__":
     classes = ["scratch", "dent", "crack"]
     main(
         adapter_list=[
-            YoloUltralyticsAdapter(
-                classes=classes,
-                metadata={
-                    "data_yaml": "/home/bachelor/ml-carbucks/data/car_dd/dataset.yaml",
-                    "weights": "yolo11l.pt",
-                },
-            ),
+            # YoloUltralyticsAdapter(
+            #     classes=classes,
+            #     metadata={
+            #         "data_yaml": "/home/bachelor/ml-carbucks/data/car_dd/dataset.yaml",
+            #         "weights": "yolo11l.pt",
+            #     },
+            # ),
             RtdetrUltralyticsAdapter(
                 classes=classes,
                 metadata={
                     "data_yaml": "/home/bachelor/ml-carbucks/data/car_dd/dataset.yaml",
                     "weights": "rtdetr-l.pt",
-                },
-            ),
-            FasterRcnnAdapter(
-                classes=classes,
-                metadata={
-                    "train_img_dir": DATA_CAR_DD_DIR / "images" / "train",
-                    "train_ann_file": DATA_CAR_DD_DIR / "instances_train.json",
-                    "val_img_dir": DATA_CAR_DD_DIR / "images" / "val",
-                    "val_ann_file": DATA_CAR_DD_DIR / "instances_val.json",
                 },
             ),
             EfficientDetAdapter(
@@ -185,6 +183,15 @@ if __name__ == "__main__":
                     "train_ann_file": DATA_CAR_DD_DIR / "instances_train_curated.json",
                     "val_img_dir": DATA_CAR_DD_DIR / "images" / "val",
                     "val_ann_file": DATA_CAR_DD_DIR / "instances_val_curated.json",
+                },
+            ),
+            FasterRcnnAdapter(
+                classes=classes,
+                metadata={
+                    "train_img_dir": DATA_CAR_DD_DIR / "images" / "train",
+                    "train_ann_file": DATA_CAR_DD_DIR / "instances_train.json",
+                    "val_img_dir": DATA_CAR_DD_DIR / "images" / "val",
+                    "val_ann_file": DATA_CAR_DD_DIR / "instances_val.json",
                 },
             ),
         ],

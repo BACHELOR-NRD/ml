@@ -36,8 +36,8 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             "val_ann_file",
         ]
 
-    def save(self, dir: Path | str) -> Path:
-        save_path = Path(dir) / "model.pth"
+    def save(self, dir: Path | str, prefix: str = "") -> Path:
+        save_path = Path(dir) / f"{prefix}model.pth"
         torch.save(self.model.model.state_dict(), save_path)
         return save_path
 
