@@ -49,7 +49,7 @@ class TrialParamWrapper:
             "img_size": trial.suggest_categorical("img_size", self.IMG_SIZE_OPTIONS),
             "batch_size": trial.suggest_categorical("batch_size", [8, 16]),
             "epochs": trial.suggest_int("epochs", 10, 30),
-            "opt": trial.suggest_categorical("opt", ["momentum", "adam"]),
+            "optimizer": trial.suggest_categorical("optimizer", ["momentum", "adam"]),
             "lr": trial.suggest_float("lr", 1e-4, 1e-1, log=True),
             "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
         }

@@ -203,8 +203,8 @@ if __name__ == "__main__":
             DATA_DIR / "car_dd_testing" / "instances_val_curated.json",
         ),
         results_dir=RESULTS_DIR,
-        n_trials=1,
-        patience=15,
+        n_trials=20,
+        patience=10,
         min_percentage_improvement=0.005,
         optimization_timeout=6 * 3600,  # 6 hours
     )
