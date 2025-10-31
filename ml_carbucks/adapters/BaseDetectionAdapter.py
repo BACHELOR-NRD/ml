@@ -30,8 +30,8 @@ class ADAPTER_PREDICTION(TypedDict):
 @dataclass
 class BaseDetectionAdapter(ABC):
     classes: List[str]
-
     weights: str | Path
+
     img_size: int = 256
     batch_size: int = 16
     epochs: int = 1
