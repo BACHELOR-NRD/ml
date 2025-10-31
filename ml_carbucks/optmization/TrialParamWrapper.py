@@ -11,11 +11,12 @@ class TrialParamWrapper:
     def _get_ultralytics_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         params = {
             "epochs": trial.suggest_int("epochs", 10, 50),
-            "batch": trial.suggest_categorical("batch", [8, 16]),
+            "batch": trial.suggest_categorical("batch", [8, 16, 32]),
             "lr0": trial.suggest_float("lr0", 1e-4, 1e-2, log=True),
             "momentum": trial.suggest_float("momentum", 0.3, 0.99),
             "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
             "patience": trial.suggest_int("patience", 10, 30),
+            "imgsz": trial.suggest_categorical("imgsz", [256, 512, 640]),
         }
         return params
 
