@@ -25,11 +25,11 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
     weights: str | Path = ""
     backbone: str = "tf_efficientdet_d0"
-    bench_labeler: bool = True
+    bench_labeler: bool = False
 
     optimizer: str = "momentum"
     lr: float = 8e-3
-    weight_decay: float = 1e-5
+    weight_decay: float = 5e-5
 
     def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model{suffix}.pth"
@@ -68,7 +68,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             model_name=backbone,
             bench_task="train",
             num_classes=len(self.classes),
-            pretrained=weights is None,
+            pretrained=weights == "",
             checkpoint_path=str(weights),
             bench_labeler=bench_labeler,
             checkpoint_ema=False,
