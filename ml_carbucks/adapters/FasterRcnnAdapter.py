@@ -1,5 +1,7 @@
+from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, List
 
 import torch
 import numpy as np
@@ -166,41 +168,31 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
+@dataclass
 class FasterRcnnAdapter(BaseDetectionAdapter):
 
-    def get_possible_hyper_keys(self) -> List[str]:
-        return [
-            "img_size",
-            "batch_size",
-            "epochs",
-            "lr_backbone",
-            "lr_head",
-            "weight_decay_backbone",
-            "weight_decay_head",
-        ]
+    weights: str | Path = "DEFAULT"
 
-    def get_required_metadata_keys(self) -> List[str]:
-        return [
-            "train_img_dir",
-            "train_ann_file",
-            "val_img_dir",
-            "val_ann_file",
-        ]
+    lr_backbone: float = 5e-5
+    lr_head: float = 5e-4
+    weight_decay_backbone: float = 1e-5
+    weight_decay_head: float = 1e-4
 
-    def save(self, dir: Path | str, prefix: str = "") -> Path:
-        save_path = Path(dir) / f"{prefix}model.pth"
+    def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+        save_path = Path(dir) / f"{prefix}model{suffix}.pth"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(self.model.state_dict(), save_path)
         return save_path
 
-    def predict(self, images: Any) -> List[ADAPTER_PREDICTION]:
+    def predict(self, images: List[torch.Tensor]) -> List[ADAPTER_PREDICTION]:
         raise NotImplementedError("Predict method is not yet implemented.")
 
     def setup(self) -> "FasterRcnnAdapter":
         logger.debug("Creating Faster R-CNN model...")
 
-        img_size = self.get_param("img_size")
+        img_size = self.img_size
 
-        weights = self.get_metadata_value("weights", "DEFAULT")
+        weights = self.weights
 
         if weights == "DEFAULT":
             self.model = fasterrcnn_resnet50_fpn(
@@ -212,7 +204,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             self.model.roi_heads.box_predictor = FastRCNNPredictor(
                 in_features, len(self.classes) + 1  # +1 for background
             )
-        elif weights is not None:
+        elif weights is not None and Path(weights).is_file():
             self.model = fasterrcnn_resnet50_fpn(
                 pretrained=False, num_classes=len(self.classes) + 1
             )
@@ -228,10 +220,10 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         return self
 
     def _create_optimizer(self):
-        lr1 = self.get_param("lr_backbone", 5e-5)
-        lr2 = self.get_param("lr_head", 5e-4)
-        weight_decay1 = self.get_param("weight_decay_backbone", 1e-5)
-        weight_decay2 = self.get_param("weight_decay_head", 1e-4)
+        lr1 = self.lr_backbone
+        lr2 = self.lr_head
+        weight_decay1 = self.weight_decay_backbone
+        weight_decay2 = self.weight_decay_head
 
         backbone_params = []
         head_params = []
@@ -249,20 +241,17 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         return torch.optim.AdamW(params)
 
-    def fit(self) -> "FasterRcnnAdapter":
+    def fit(self, img_dir: str | Path, ann_file: str | Path) -> "FasterRcnnAdapter":
         logger.info("Starting training...")
         self.model.train()
 
-        epochs = self.get_param("epochs")
-        batch_size = self.get_param("batch_size")
-        img_size = self.get_param("img_size")
-
-        train_img_dir = self.get_metadata_value("train_img_dir")
-        train_ann_file = self.get_metadata_value("train_ann_file")
+        epochs = self.epochs
+        batch_size = self.batch_size
+        img_size = self.img_size
 
         train_dataset = COCODetectionWrapper(
-            img_folder=train_img_dir,
-            ann_file=train_ann_file,
+            img_folder=img_dir,
+            ann_file=ann_file,
             transforms=create_transforms(is_training=True, img_size=img_size),
         )
 
@@ -299,19 +288,16 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         return self
 
-    def evaluate(self) -> Dict[str, float]:
+    def evaluate(self, img_dir: str | Path, ann_file: str | Path) -> Dict[str, float]:
         logger.info("Starting evaluation...")
         self.model.eval()
 
-        batch_size = self.get_param("batch_size")
-        img_size = self.get_param("img_size")
-
-        val_img_dir = self.get_metadata_value("val_img_dir")
-        val_ann_file = self.get_metadata_value("val_ann_file")
+        batch_size = self.batch_size
+        img_size = self.img_size
 
         val_dataset = COCODetectionWrapper(
-            img_folder=val_img_dir,
-            ann_file=val_ann_file,
+            img_folder=img_dir,
+            ann_file=ann_file,
             transforms=create_transforms(is_training=True, img_size=img_size),
         )
 
@@ -347,8 +333,9 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
     def clone(self) -> "FasterRcnnAdapter":
         return FasterRcnnAdapter(
-            classes=self.classes,
-            metadata=self.metadata.copy(),
-            hparams=self.hparams.copy(),
-            device=self.device,
+            classes=deepcopy(self.classes),
+            weights=self.weights,
+            img_size=self.img_size,
+            batch_size=self.batch_size,
+            epochs=self.epochs,
         )

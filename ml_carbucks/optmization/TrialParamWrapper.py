@@ -8,15 +8,23 @@ import optuna
 class TrialParamWrapper:
     """A class that is to help the creation of the trial parameters."""
 
+    IMG_SIZE_OPTIONS = [
+        256,
+        # 512,
+        # 640,
+        # 768,
+        # 1024,
+    ]
+
     def _get_ultralytics_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         params = {
-            "epochs": trial.suggest_int("epochs", 10, 50),
+            "epochs": trial.suggest_int("epochs", 10, 30),
             "batch": trial.suggest_categorical("batch", [8, 16, 32]),
             "lr0": trial.suggest_float("lr0", 1e-4, 1e-2, log=True),
             "momentum": trial.suggest_float("momentum", 0.3, 0.99),
             "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
             "patience": trial.suggest_int("patience", 10, 30),
-            "imgsz": trial.suggest_categorical("imgsz", [256, 512]),
+            "imgsz": trial.suggest_categorical("imgsz", self.IMG_SIZE_OPTIONS),
         }
         return params
 
@@ -30,17 +38,19 @@ class TrialParamWrapper:
             "weight_decay_head": trial.suggest_float(
                 "weight_decay_head", 1e-5, 1e-2, log=True
             ),
-            "batch_size": trial.suggest_categorical("batch_size", [4, 8, 10]),
-            "img_size": trial.suggest_categorical("img_size", [256, 512]),
+            "batch_size": trial.suggest_categorical("batch_size", [4, 8, 12]),
+            "img_size": trial.suggest_categorical("img_size", self.IMG_SIZE_OPTIONS),
+            "epochs": trial.suggest_int("epochs", 10, 50),
         }
         return params
 
     def _get_efficientdet_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         params = {
+            "epochs": trial.suggest_int("epochs", 10, 50),
             "lr": trial.suggest_float("lr", 1e-4, 1e-1, log=True),
             "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
-            "batch_size": trial.suggest_categorical("batch_size", [4, 8, 16]),
-            "img_size": trial.suggest_categorical("img_size", [256, 512]),
+            "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
+            "img_size": trial.suggest_categorical("img_size", self.IMG_SIZE_OPTIONS),
             "opt": trial.suggest_categorical("opt", ["momentum", "adam"]),
         }
         return params

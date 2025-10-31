@@ -1,5 +1,7 @@
+from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Dict, List
 
 import torch
 from effdet import create_model, create_loader
@@ -18,59 +20,55 @@ from ml_carbucks.utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 
+@dataclass
 class EfficientDetAdapter(BaseDetectionAdapter):
 
-    def get_possible_hyper_keys(self) -> List[str]:
-        return [
-            "img_size",
-            "batch_size",
-            "epochs",
-            "opt",
-            "lr",
-            "weight_decay",
-        ]
+    backbone: str = "tf_efficientdet_d0"
+    weights: str | Path = ""
+    bench_labeler: bool = True
+    optimizer: str = "momentum"
+    lr: float = 8e-3
+    weight_decay: float = 1e-5
 
-    def get_required_metadata_keys(self) -> List[str]:
-        return [
-            "version",
-            "train_img_dir",
-            "train_ann_file",
-            "val_img_dir",
-            "val_ann_file",
-        ]
-
-    def save(self, dir: Path | str, prefix: str = "") -> Path:
-        save_path = Path(dir) / f"{prefix}model.pth"
+    def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+        save_path = Path(dir) / f"{prefix}model{suffix}.pth"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(self.model.model.state_dict(), save_path)
         return save_path
 
     def clone(self) -> "EfficientDetAdapter":
         return EfficientDetAdapter(
-            classes=self.classes,
-            metadata=self.metadata.copy(),
-            hparams=self.hparams.copy(),
-            device=self.device,
+            classes=deepcopy(self.classes),
+            weights=self.weights,
+            img_size=self.img_size,
+            batch_size=self.batch_size,
+            epochs=self.epochs,
+            backbone=self.backbone,
+            bench_labeler=self.bench_labeler,
+            optimizer=self.optimizer,
+            lr=self.lr,
+            weight_decay=self.weight_decay,
         )
 
-    def predict(self, images: Any) -> List[ADAPTER_PREDICTION]:
+    def predict(self, images: List[torch.Tensor]) -> List[ADAPTER_PREDICTION]:
         raise NotImplementedError("Predict method is not yet implemented.")
 
     def setup(self) -> "EfficientDetAdapter":
-        img_size = self.get_param("img_size")
+        img_size = self.img_size
 
-        version = self.get_metadata_value("version")
-        weights = self.get_metadata_value("weights", None)
-        bench_labeler = self.get_metadata_value("bench_labeler", True)
+        backbone = self.backbone
+        weights = self.weights
+        bench_labeler = self.bench_labeler
 
         # NOTE: img size would need to be updated here if we want to change it
         # I dont think it is possible to change it after model creation
         extra_args = dict(image_size=(img_size, img_size))
         self.model = create_model(
-            model_name=version,
+            model_name=backbone,
             bench_task="train",
             num_classes=len(self.classes),
             pretrained=weights is None,
-            checkpoint_path=weights,
+            checkpoint_path=str(weights),
             bench_labeler=bench_labeler,
             checkpoint_ema=False,
             **extra_args,
@@ -88,24 +86,21 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         return self
 
-    def fit(self) -> "EfficientDetAdapter":
+    def fit(self, img_dir: str | Path, ann_file: str | Path) -> "EfficientDetAdapter":
         logger.info("Starting training...")
         self.model.train()
 
-        batch_size = self.get_param("batch_size")
-        epochs = self.get_param("epochs")
-        opt = self.get_param("opt", "momentum")
-        lr = self.get_param("lr", 7e-3)
-        weight_decay = self.get_param("weight_decay", 1e-5)
+        batch_size = self.batch_size
+        epochs = self.epochs
+        opt = self.optimizer
+        lr = self.lr
+        weight_decay = self.weight_decay
 
-        train_img_dir = self.get_metadata_value("train_img_dir")
-        train_ann_file = self.get_metadata_value("train_ann_file")
-
-        input_config = resolve_input_config(self.hparams, self.model.config)
+        input_config = resolve_input_config(dict(), self.model.config)
 
         train_dataset = create_dataset_custom(
-            img_dir=train_img_dir,
-            ann_file=train_ann_file,
+            img_dir=img_dir,
+            ann_file=ann_file,
             has_labels=True,
         )
 
@@ -162,21 +157,18 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         return self
 
-    def evaluate(self) -> Dict[str, float]:
+    def evaluate(self, img_dir: str | Path, ann_file: str | Path) -> Dict[str, float]:
         self.model.eval()
 
-        batch_size = self.get_param("batch_size")
-
-        val_img_dir = self.get_metadata_value("val_img_dir")
-        val_ann_file = self.get_metadata_value("val_ann_file")
+        batch_size = self.batch_size
 
         dataset_val = create_dataset_custom(
-            img_dir=val_img_dir,
-            ann_file=val_ann_file,
+            img_dir=img_dir,
+            ann_file=ann_file,
             has_labels=True,
         )
 
-        input_config = resolve_input_config(self.hparams, self.model.config)
+        input_config = resolve_input_config(dict(), self.model.config)
 
         val_loader = create_loader(
             dataset_val,
