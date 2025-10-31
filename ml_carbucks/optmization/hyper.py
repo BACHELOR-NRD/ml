@@ -103,8 +103,8 @@ def execute_simple_study(
 
 def create_objective(
     adapter: BaseDetectionAdapter,
-    train_set: tuple,
-    val_set: tuple,
+    train_datasets: list[tuple],
+    val_datasets: list[tuple],
     results_dir: Path,
 ) -> Callable:
 
@@ -116,9 +116,9 @@ def create_objective(
             trial_adapter = adapter.clone()
             trial_adapter = trial_adapter.set_params(params)
             trial_adapter.setup()
-            trial_adapter.fit(ann_file=train_set[1], img_dir=train_set[0])
+            trial_adapter.fit(datasets=train_datasets)
 
-            metrics = trial_adapter.evaluate(ann_file=val_set[1], img_dir=val_set[0])
+            metrics = trial_adapter.evaluate(datasets=val_datasets)
 
             save_path = trial_adapter.save(
                 dir=results_dir,
@@ -154,8 +154,8 @@ def main(
     adapter_list: list[BaseDetectionAdapter],
     runtime: str,
     results_dir: Path,
-    train_set: tuple,
-    val_set: tuple,
+    train_datasets: list[tuple],
+    val_datasets: list[tuple],
     n_trials: int = 25,
     patience: int = -1,
     min_percentage_improvement: float = 0.01,
@@ -169,8 +169,8 @@ def main(
             n_trials=n_trials,
             create_objective_func=partial(
                 create_objective,
-                train_set=train_set,
-                val_set=val_set,
+                train_datasets=train_datasets,
+                val_datasets=val_datasets,
                 results_dir=results_dir / "optuna" / f"hyper_{runtime}" / "checkpoints",
             ),
             adapter=adapter,
@@ -194,17 +194,21 @@ if __name__ == "__main__":
             FasterRcnnAdapter(classes=classes),
         ],
         runtime=dt.datetime.now().strftime("%Y%m%d_%H%M%S"),
-        train_set=(
-            DATA_DIR / "car_dd_testing" / "images" / "train",
-            DATA_DIR / "car_dd_testing" / "instances_train_curated.json",
-        ),
-        val_set=(
-            DATA_DIR / "car_dd_testing" / "images" / "val",
-            DATA_DIR / "car_dd_testing" / "instances_val_curated.json",
-        ),
+        train_datasets=[
+            (
+                DATA_DIR / "car_dd_testing" / "images" / "train",
+                DATA_DIR / "car_dd_testing" / "instances_train_curated.json",
+            )
+        ],
+        val_datasets=[
+            (
+                DATA_DIR / "car_dd_testing" / "images" / "val",
+                DATA_DIR / "car_dd_testing" / "instances_val_curated.json",
+            )
+        ],
         results_dir=RESULTS_DIR,
-        n_trials=20,
+        n_trials=15,
         patience=10,
         min_percentage_improvement=0.005,
-        optimization_timeout=6 * 3600,  # 6 hours
+        optimization_timeout=3 * 3600,  # N hours
     )

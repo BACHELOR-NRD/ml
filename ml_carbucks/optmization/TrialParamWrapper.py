@@ -9,8 +9,9 @@ class TrialParamWrapper:
     """A class that is to help the creation of the trial parameters."""
 
     IMG_SIZE_OPTIONS = [
-        256,
-        512,
+        # 256,
+        384,
+        # 512,
         # 640,
         # 768,
         # 1024,
