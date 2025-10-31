@@ -1,12 +1,12 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import torch
 import numpy as np
 from tqdm import tqdm
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, ConcatDataset
 from torchvision.models.detection.faster_rcnn import (
     FastRCNNPredictor,
     fasterrcnn_resnet50_fpn,
@@ -241,7 +241,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         return torch.optim.AdamW(params)
 
-    def fit(self, img_dir: str | Path, ann_file: str | Path) -> "FasterRcnnAdapter":
+    def fit(self, datasets: List[Tuple[str | Path, str | Path]]) -> "FasterRcnnAdapter":
         logger.info("Starting training...")
         self.model.train()
 
@@ -249,17 +249,22 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         batch_size = self.batch_size
         img_size = self.img_size
 
-        train_dataset = COCODetectionWrapper(
-            img_folder=img_dir,
-            ann_file=ann_file,
-            transforms=create_transforms(is_training=True, img_size=img_size),
-        )
+        all_datasets = []
+        for img_dir, ann_file in datasets:
+            ds = COCODetectionWrapper(
+                img_folder=img_dir,
+                ann_file=ann_file,
+                transforms=create_transforms(is_training=True, img_size=img_size),
+            )
+            all_datasets.append(ds)
+
+        train_dataset = ConcatDataset(all_datasets)
 
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,  # 2–8 is typical, memory permitting
             shuffle=True,
-            num_workers=batch_size // 2,  # adjust based on your CPU
+            num_workers=max(4, batch_size // 2),  # adjust based on your CPU
             pin_memory=True,
             collate_fn=collate_fn,  # crucial
         )
@@ -288,24 +293,31 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         return self
 
-    def evaluate(self, img_dir: str | Path, ann_file: str | Path) -> Dict[str, float]:
+    def evaluate(
+        self, datasets: List[Tuple[str | Path, str | Path]]
+    ) -> Dict[str, float]:
         logger.info("Starting evaluation...")
         self.model.eval()
 
         batch_size = self.batch_size
         img_size = self.img_size
 
-        val_dataset = COCODetectionWrapper(
-            img_folder=img_dir,
-            ann_file=ann_file,
-            transforms=create_transforms(is_training=True, img_size=img_size),
-        )
+        all_datasets = []
+        for img_dir, ann_file in datasets:
+            ds = COCODetectionWrapper(
+                img_folder=img_dir,
+                ann_file=ann_file,
+                transforms=create_transforms(is_training=False, img_size=img_size),
+            )
+            all_datasets.append(ds)
+
+        val_dataset = ConcatDataset(all_datasets)
 
         val_loader = DataLoader(
             val_dataset,
             batch_size=batch_size,  # 2–8 is typical, memory permitting
             shuffle=True,
-            num_workers=batch_size // 2,  # adjust based on your CPU
+            num_workers=max(4, batch_size // 2),  # adjust based on your CPU
             pin_memory=True,
             collate_fn=collate_fn,  # crucial
         )

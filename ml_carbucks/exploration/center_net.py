@@ -26,7 +26,7 @@ from effdet.data import create_loader
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from torchvision.ops import FeaturePyramidNetwork
 
-from ml_carbucks.utils.coco import (  # noqa: F401
+from ml_carbucks.utils.effdet_extension import (  # noqa: F401
     CocoStatsEvaluator,
     create_dataset_custom,
 )
