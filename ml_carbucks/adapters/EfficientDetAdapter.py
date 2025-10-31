@@ -23,9 +23,10 @@ logger = setup_logger(__name__)
 @dataclass
 class EfficientDetAdapter(BaseDetectionAdapter):
 
-    backbone: str = "tf_efficientdet_d0"
     weights: str | Path = ""
+    backbone: str = "tf_efficientdet_d0"
     bench_labeler: bool = True
+
     optimizer: str = "momentum"
     lr: float = 8e-3
     weight_decay: float = 1e-5

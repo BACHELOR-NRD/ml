@@ -26,6 +26,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     lr: float = 1e-3
     momentum: float = 0.9
     weight_decay: float = 1e-4
+
     seed: int = 42
     training_save: bool = True
     verbose: bool = True
