@@ -1,7 +1,26 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 from dataclasses import dataclass, field
+
+from numpy.typing import NDArray
+import torch
+
+
+class ADAPTER_PREDICTION(TypedDict):
+    """Standardized per-image adapter prediction.
+
+    Notes:
+        - `boxes` is expected to be a 2D array of shape (N, 4) with [x1, y1, x2, y2].
+        - `scores` is a 1D array of shape (N,) with confidence scores.
+        - `labels` is a list of length N with string labels (or category names).
+        - `image_ids` can be used when batching predictions from multiple images.
+    """
+
+    boxes: NDArray
+    scores: NDArray
+    labels: List[str]
+    image_ids: List[int]
 
 
 @dataclass
@@ -41,7 +60,7 @@ class BaseDetectionAdapter(ABC):
         pass
 
     @abstractmethod
-    def predict(self, images: Any) -> List[Dict[str, Any]]:
+    def predict(self, images: List[torch.Tensor]) -> List[ADAPTER_PREDICTION]:
         """
         Run full inference pipeline on a single image (or batch if desired).
         Must return standardized detections:
