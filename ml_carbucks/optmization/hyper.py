@@ -149,7 +149,10 @@ def main(
             name=runtime,
             results_dir=results_dir,
             n_trials=n_trials,
-            create_objective_func=partial(create_objective, results_dir=results_dir),
+            create_objective_func=partial(
+                create_objective,
+                results_dir=results_dir / "optuna" / f"hyper_{runtime}",
+            ),
             adapter=adapter,
             patience=patience,
             min_percentage_improvement=min_percentage_improvement,
@@ -197,7 +200,7 @@ if __name__ == "__main__":
         ],
         runtime=dt.datetime.now().strftime("%Y%m%d_%H%M%S"),
         results_dir=RESULTS_DIR,
-        n_trials=10,
+        n_trials=1,
         patience=15,
         min_percentage_improvement=0.005,
         optimization_timeout=6 * 3600,  # 6 hours

@@ -1,9 +1,13 @@
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, List
+import torch
 from ultralytics.models.yolo import YOLO
 from ultralytics.models.rtdetr import RTDETR
 
-from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
+from ml_carbucks.adapters.BaseDetectionAdapter import (
+    BaseDetectionAdapter,
+    ADAPTER_PREDICTION,
+)
 from ml_carbucks.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -59,8 +63,35 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
         return metrics
 
-    def predict(self, images: Any) -> List[Dict[str, Any]]:
-        raise NotImplementedError("Predict method is not yet implemented.")
+    def predict(self, images: List[torch.Tensor]) -> List[ADAPTER_PREDICTION]:
+        logger.info("Starting prediction...")
+
+        conf_threshold = self.get_metadata_value("conf_threshold", 0.25)
+        iou_threshold = self.get_metadata_value("iou_threshold", 0.45)
+        max_detections = self.get_metadata_value("max_detections", 100)
+
+        results = self.model.predict(  # type: ignore
+            imgs=images,
+            conf=conf_threshold,
+            iou=iou_threshold,
+            max_det=max_detections,
+        )
+
+        all_detections: List[ADAPTER_PREDICTION] = []
+        for result in results:
+            prediction = ADAPTER_PREDICTION(
+                boxes=result.boxes.xyxy.cpu().numpy().tolist(),
+                scores=result.boxes.conf.cpu().numpy().tolist(),
+                labels=[
+                    result.names[int(label)]
+                    for label in result.boxes.cls.cpu().numpy().tolist()
+                ],
+                image_ids=[result.orig_img_id] * len(result.boxes),
+            )
+
+            all_detections.append(prediction)
+
+        return all_detections
 
     def save(self, dir: Path | str, prefix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model.pt"

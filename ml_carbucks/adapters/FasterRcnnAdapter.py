@@ -15,7 +15,10 @@ from torchmetrics.detection.mean_ap import MeanAveragePrecision
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 
-from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
+from ml_carbucks.adapters.BaseDetectionAdapter import (
+    ADAPTER_PREDICTION,
+    BaseDetectionAdapter,
+)
 from ml_carbucks.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -189,7 +192,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         torch.save(self.model.state_dict(), save_path)
         return save_path
 
-    def predict(self, images: Any) -> List[Dict[str, Any]]:
+    def predict(self, images: Any) -> List[ADAPTER_PREDICTION]:
         raise NotImplementedError("Predict method is not yet implemented.")
 
     def setup(self) -> "FasterRcnnAdapter":
