@@ -1,12 +1,13 @@
-from functools import partial
-from pathlib import Path
-from typing import Callable, Optional
+import json
 import datetime as dt
+from pathlib import Path
+from functools import partial
+from typing import Callable, Optional
 
 import optuna
+import pandas as pd
 from optuna import Trial
 
-import pickle as pkl
 from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
 from ml_carbucks.adapters.UltralyticsAdapter import (  # noqa: F401
     YoloUltralyticsAdapter,
@@ -83,16 +84,20 @@ def execute_simple_study(
     # NOTE: the best model would have to be retrained so that it could be saved properly
     # model_path = adapter.save(result_dir_path)
     hyper_results = {
-        "params": best_trial.params,
-        "value": best_trial.value if is_single_objective else best_trial.values[0],
+        "best_params": json.dumps(best_trial.params),
+        "metadata": json.dumps(adapter.metadata),
+        "best_value": best_trial.value if is_single_objective else best_trial.values[0],
         # "model_path": model_path,
+        "best_trial_number": best_trial.number,
         "study_name": name,
         "adapter": adapter.__class__.__name__,
         "n_trials": len(completed_trials),
     }
 
-    with open(result_dir_path / f"{adapter.__class__.__name__}.pkl", "wb") as f:
-        pkl.dump(hyper_results, f)
+    with open(result_dir_path / f"results_{adapter.__class__.__name__}.json", "w") as f:
+        json.dump(hyper_results, f)
+
+    return hyper_results
 
 
 def create_objective(adapter: BaseDetectionAdapter, results_dir: Path) -> Callable:
@@ -109,9 +114,13 @@ def create_objective(adapter: BaseDetectionAdapter, results_dir: Path) -> Callab
 
             metrics = trial_adapter.evaluate()
 
-            trial_adapter.save(
+            save_path = trial_adapter.save(
                 dir=results_dir,
                 prefix=f"trial_{trial.number}_{adapter.__class__.__name__}",
+            )
+
+            logger.info(
+                f"Trial {trial.number} completed with params: {params}, metrics: {metrics}, saved at: {save_path}"
             )
 
             trial.set_user_attr("params", params)
@@ -143,21 +152,25 @@ def main(
     min_percentage_improvement: float = 0.01,
     optimization_timeout: Optional[float] = None,
 ):
-
+    results = []
     for adapter in adapter_list:
-        execute_simple_study(
+        result = execute_simple_study(
             name=runtime,
             results_dir=results_dir,
             n_trials=n_trials,
             create_objective_func=partial(
                 create_objective,
-                results_dir=results_dir / "optuna" / f"hyper_{runtime}",
+                results_dir=results_dir / "optuna" / f"hyper_{runtime}" / "checkpoints",
             ),
             adapter=adapter,
             patience=patience,
             min_percentage_improvement=min_percentage_improvement,
             optimization_timeout=optimization_timeout,
         )
+        results.append(result)
+
+    df = pd.DataFrame(results)
+    df.to_csv(results_dir / "optuna" / f"aggregated_hyper_{runtime}.csv", index=False)
 
 
 if __name__ == "__main__":

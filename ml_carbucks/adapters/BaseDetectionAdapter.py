@@ -1,10 +1,14 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, Dict, List, TypedDict
 from dataclasses import dataclass, field
 
 from numpy.typing import NDArray
 import torch
+
+from ml_carbucks.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class ADAPTER_PREDICTION(TypedDict):
@@ -26,37 +30,30 @@ class ADAPTER_PREDICTION(TypedDict):
 @dataclass
 class BaseDetectionAdapter(ABC):
     classes: List[str]
-    metadata: Dict[str, Any]
-    hparams: Dict[str, Any] = field(default_factory=dict)
-    device: Optional[str] = None
+
+    weights: str | Path
+    img_size: int = 256
+    batch_size: int = 16
+    epochs: int = 1
+
+    device: str = field(init=False)
     model: Any = field(init=False, default=None)
 
     def __post_init__(self):
-        self.device = self.device or ("cuda" if self._cuda_available() else "cpu")
-        self.model = None
-
-        self.health_check()
+        self.device = "cuda" if self._cuda_available() else "cpu"
 
     # ------------------------
-
-    @abstractmethod
-    def get_required_metadata_keys(self) -> List[str]:
-        pass
-
-    @abstractmethod
-    def get_possible_hyper_keys(self) -> List[str]:
-        pass
 
     @abstractmethod
     def setup(self) -> "BaseDetectionAdapter":
         pass
 
     @abstractmethod
-    def fit(self) -> "BaseDetectionAdapter":
+    def fit(self, img_dir: str | Path, ann_file: str | Path) -> "BaseDetectionAdapter":
         pass
 
     @abstractmethod
-    def evaluate(self) -> Dict[str, float]:
+    def evaluate(self, img_dir: str | Path, ann_file: str | Path) -> Dict[str, float]:
         pass
 
     @abstractmethod
@@ -69,7 +66,7 @@ class BaseDetectionAdapter(ABC):
         pass
 
     @abstractmethod
-    def save(self, dir: Path | str, prefix: str = "") -> Path:
+    def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         """Save the model weights to the specified path."""
         pass
 
@@ -79,42 +76,6 @@ class BaseDetectionAdapter(ABC):
         pass
 
     # ------------------------
-
-    def set_params(self, params: Dict[str, Any]) -> "BaseDetectionAdapter":
-        """Set hyperparameters and return self for chaining."""
-        if self.model is not None:
-            raise ValueError("Cannot set parameters after model has been created.")
-
-        possible_keys = self.get_possible_hyper_keys()
-        for key, value in params.items():
-            if key in possible_keys:
-                self.hparams[key] = value
-            else:
-                raise ValueError(
-                    f"Invalid hyperparameter key: {key} for adapter {self.__class__.__name__}"
-                )
-        return self
-
-    def get_metadata_value(self, key: str, default: Any = None) -> Any:
-        return self.metadata.get(key, default)
-
-    def get_param(self, key: str, default: Any = None) -> Any:
-        return self.hparams.get(key, default)
-
-    def health_check(self):
-        required_keys = self.get_required_metadata_keys()
-        missing_keys = [key for key in required_keys if key not in self.metadata]
-        if missing_keys:
-            raise ValueError(
-                f"Missing required metadata keys: {missing_keys} for adapter {self.__class__.__name__}"
-            )
-
-        possible_keys = self.get_possible_hyper_keys()
-        invalid_keys = [key for key in self.hparams if key not in possible_keys]
-        if invalid_keys:
-            raise ValueError(
-                f"Invalid hyperparameter keys: {invalid_keys} for adapter {self.__class__.__name__}"
-            )
 
     @staticmethod
     def _cuda_available() -> bool:
