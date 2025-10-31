@@ -85,3 +85,20 @@ class BaseDetectionAdapter(ABC):
             return torch.cuda.is_available()
         except ImportError:
             return False
+
+    def set_params(self, params: Dict[str, Any]) -> "BaseDetectionAdapter":
+        for key, value in params.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+            else:
+                raise ValueError(
+                    f"Parameter {key} not found in {self.__class__.__name__}"
+                )
+        return self
+
+    def get_params(self) -> Dict[str, Any]:
+        return {
+            key: value
+            for key, value in self.__dict__.items()
+            if key not in ["model", "device"]
+        }

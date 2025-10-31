@@ -18,7 +18,7 @@ from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter  # noqa
 from ml_carbucks.optmization.EarlyStoppingCallback import create_early_stopping_callback
 from ml_carbucks.optmization.TrialParamWrapper import TrialParamWrapper
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks import RESULTS_DIR, DATA_CAR_DD_DIR
+from ml_carbucks import DATA_DIR, RESULTS_DIR
 
 logger = setup_logger(__name__)
 
@@ -85,9 +85,9 @@ def execute_simple_study(
     # model_path = adapter.save(result_dir_path)
     hyper_results = {
         "best_params": json.dumps(best_trial.params),
-        "metadata": json.dumps(adapter.metadata),
         "best_value": best_trial.value if is_single_objective else best_trial.values[0],
         # "model_path": model_path,
+        "classes": json.dumps(adapter.classes),
         "best_trial_number": best_trial.number,
         "study_name": name,
         "adapter": adapter.__class__.__name__,
@@ -100,7 +100,12 @@ def execute_simple_study(
     return hyper_results
 
 
-def create_objective(adapter: BaseDetectionAdapter, results_dir: Path) -> Callable:
+def create_objective(
+    adapter: BaseDetectionAdapter,
+    train_set: tuple,
+    val_set: tuple,
+    results_dir: Path,
+) -> Callable:
 
     def objective(trial: Trial) -> float:
 
@@ -110,9 +115,9 @@ def create_objective(adapter: BaseDetectionAdapter, results_dir: Path) -> Callab
             trial_adapter = adapter.clone()
             trial_adapter = trial_adapter.set_params(params)
             trial_adapter.setup()
-            trial_adapter.fit()
+            trial_adapter.fit(ann_file=train_set[1], img_dir=train_set[0])
 
-            metrics = trial_adapter.evaluate()
+            metrics = trial_adapter.evaluate(ann_file=val_set[1], img_dir=val_set[0])
 
             save_path = trial_adapter.save(
                 dir=results_dir,
@@ -147,6 +152,8 @@ def main(
     adapter_list: list[BaseDetectionAdapter],
     runtime: str,
     results_dir: Path,
+    train_set: tuple,
+    val_set: tuple,
     n_trials: int = 25,
     patience: int = -1,
     min_percentage_improvement: float = 0.01,
@@ -160,6 +167,8 @@ def main(
             n_trials=n_trials,
             create_objective_func=partial(
                 create_objective,
+                train_set=train_set,
+                val_set=val_set,
                 results_dir=results_dir / "optuna" / f"hyper_{runtime}" / "checkpoints",
             ),
             adapter=adapter,
@@ -177,41 +186,20 @@ if __name__ == "__main__":
     classes = ["scratch", "dent", "crack"]
     main(
         adapter_list=[
-            RtdetrUltralyticsAdapter(
-                classes=classes,
-                metadata={
-                    "data_yaml": "/home/bachelor/ml-carbucks/data/car_dd/dataset.yaml",
-                    "weights": "rtdetr-l.pt",
-                },
-            ),
-            EfficientDetAdapter(
-                classes=classes,
-                metadata={
-                    "version": "efficientdet_d0",
-                    "train_img_dir": DATA_CAR_DD_DIR / "images" / "train",
-                    "train_ann_file": DATA_CAR_DD_DIR / "instances_train_curated.json",
-                    "val_img_dir": DATA_CAR_DD_DIR / "images" / "val",
-                    "val_ann_file": DATA_CAR_DD_DIR / "instances_val_curated.json",
-                },
-            ),
-            YoloUltralyticsAdapter(
-                classes=classes,
-                metadata={
-                    "data_yaml": "/home/bachelor/ml-carbucks/data/car_dd/dataset.yaml",
-                    "weights": "yolo11n.pt",
-                },
-            ),
-            FasterRcnnAdapter(
-                classes=classes,
-                metadata={
-                    "train_img_dir": DATA_CAR_DD_DIR / "images" / "train",
-                    "train_ann_file": DATA_CAR_DD_DIR / "instances_train.json",
-                    "val_img_dir": DATA_CAR_DD_DIR / "images" / "val",
-                    "val_ann_file": DATA_CAR_DD_DIR / "instances_val.json",
-                },
-            ),
+            EfficientDetAdapter(classes=classes),
+            RtdetrUltralyticsAdapter(classes=classes),
+            YoloUltralyticsAdapter(classes=classes),
+            FasterRcnnAdapter(classes=classes),
         ],
         runtime=dt.datetime.now().strftime("%Y%m%d_%H%M%S"),
+        train_set=(
+            DATA_DIR / "car_dd_testing" / "images" / "train",
+            DATA_DIR / "car_dd_testing" / "instances_train_curated.json",
+        ),
+        val_set=(
+            DATA_DIR / "car_dd_testing" / "images" / "val",
+            DATA_DIR / "car_dd_testing" / "instances_val_curated.json",
+        ),
         results_dir=RESULTS_DIR,
         n_trials=1,
         patience=15,
