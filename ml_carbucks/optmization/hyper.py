@@ -6,6 +6,7 @@ from typing import Callable, Optional
 
 import optuna
 import pandas as pd
+import pickle as pkl
 from optuna import Trial
 
 from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
@@ -123,6 +124,7 @@ def create_objective(
                 dir=results_dir,
                 prefix=f"trial_{trial.number}_{adapter.__class__.__name__}",
             )
+            pkl.dump(trial_adapter, open(save_path.with_suffix(".pkl"), "wb"))
 
             logger.info(
                 f"Trial {trial.number} completed with params: {params}, metrics: {metrics}, saved at: {save_path}"
