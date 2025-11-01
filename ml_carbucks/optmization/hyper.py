@@ -134,7 +134,7 @@ def create_objective(
             score = metrics["map_50_95"]
 
             logger.info(
-                f"Trial {trial.number} completed with score: {score}, params: {params}, metrics: {metrics}, saved at: {save_path}"
+                f"Trial {trial.number} completed with score: {score}, params: {params}, metrics: {metrics}"
             )
 
             trial.set_user_attr("params", params)
@@ -246,7 +246,7 @@ if __name__ == "__main__":
             )
         ],
         results_dir=RESULTS_DIR,
-        n_trials=25,
+        n_trials=20,
         patience=10,
         min_percentage_improvement=0.005,
         optimization_timeout=5 * 3600,  # N hours
