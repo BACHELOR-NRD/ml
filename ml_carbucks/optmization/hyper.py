@@ -126,10 +126,11 @@ def create_objective(
 
             metrics = trial_adapter.evaluate(datasets=val_datasets)
 
-            save_path = trial_adapter.save(
-                dir=results_dir,
-                prefix=f"trial_{trial.number}_{adapter.__class__.__name__}",
-            )
+            # NOTE: saving all the models may require too much disk space
+            # save_path = trial_adapter.save(
+            #     dir=results_dir,
+            #     prefix=f"trial_{trial.number}_{adapter.__class__.__name__}",
+            # )
             score = metrics["map_50_95"]
 
             logger.info(
@@ -189,6 +190,39 @@ def main(
     df.to_csv(results_dir / "optuna" / f"aggregated_hyper_{runtime}.csv", index=False)
 
 
+def debug():
+    train_datasets = [
+        (
+            DATA_DIR / "car_dd_testing" / "images" / "train",
+            DATA_DIR / "car_dd_testing" / "instances_train_curated.json",
+        )
+    ]
+    val_datasets = [
+        (
+            DATA_DIR / "car_dd_testing" / "images" / "val",
+            DATA_DIR / "car_dd_testing" / "instances_val_curated.json",
+        )
+    ]
+    model = FasterRcnnAdapter(classes=classes)
+    model.set_params(
+        {
+            "img_size": 640,
+            "batch_size": 16,
+            # "epochs": 1,
+            # "epochs": 30,
+            # "lr_backbone": 1.1418701765125965e-05,
+            # "lr_head": 0.009459099255432072,
+            # "weight_decay_backbone": 4.089517605333322e-06,
+            # "weight_decay_head": 0.0002135315334108973,
+        }
+    )
+    model.setup()
+
+    model.fit(datasets=train_datasets)  # type: ignore
+    metrics = model.evaluate(datasets=val_datasets)  # type: ignore
+    print("Metrics:", metrics)
+
+
 if __name__ == "__main__":
     classes = ["scratch", "dent", "crack"]
     main(
@@ -212,8 +246,9 @@ if __name__ == "__main__":
             )
         ],
         results_dir=RESULTS_DIR,
-        n_trials=5,
+        n_trials=25,
         patience=10,
         min_percentage_improvement=0.005,
-        optimization_timeout=3 * 3600,  # N hours
+        optimization_timeout=5 * 3600,  # N hours
     )
+    # debug()

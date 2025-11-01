@@ -132,9 +132,9 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         val_datasets: List[Tuple[str | Path, str | Path]],
         results_path: str | Path,
         results_name: str,
-    ) -> None:
+    ) -> Dict[str, float]:
         logger.error("Debugging not implemented for UltralyticsAdapter.")
-        pass
+        raise NotImplementedError("Debug method is not implemented.")
 
     def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model{suffix}.pt"
