@@ -29,7 +29,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
     seed: int = 42
     training_save: bool = True
-    verbose: bool = True
+    verbose: bool = False
     project_dir: str | Path | None = None
 
     def fit(
@@ -231,6 +231,14 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
             img_size=self.img_size,
             batch_size=self.batch_size,
             epochs=self.epochs,
+            optimizer=self.optimizer,
+            lr=self.lr,
+            momentum=self.momentum,
+            weight_decay=self.weight_decay,
+            seed=self.seed,
+            training_save=self.training_save,
+            verbose=self.verbose,
+            project_dir=self.project_dir,
         )
 
 
@@ -252,4 +260,12 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
             img_size=self.img_size,
             batch_size=self.batch_size,
             epochs=self.epochs,
+            optimizer=self.optimizer,
+            lr=self.lr,
+            momentum=self.momentum,
+            weight_decay=self.weight_decay,
+            seed=self.seed,
+            training_save=self.training_save,
+            verbose=self.verbose,
+            project_dir=self.project_dir,
         )
