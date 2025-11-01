@@ -22,6 +22,7 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
     BaseDetectionAdapter,
 )
 from ml_carbucks.utils.logger import setup_logger
+from ml_carbucks.utils.result_saver import ResultSaver
 
 logger = setup_logger(__name__)
 
@@ -241,11 +242,9 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         return torch.optim.AdamW(params)
 
-    def fit(self, datasets: List[Tuple[str | Path, str | Path]]) -> "FasterRcnnAdapter":
-        logger.info("Starting training...")
-        self.model.train()
-
-        epochs = self.epochs
+    def _create_loader(
+        self, datasets: List[Tuple[str | Path, str | Path]], is_training: bool
+    ) -> DataLoader:
         batch_size = self.batch_size
         img_size = self.img_size
 
@@ -254,44 +253,91 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             ds = COCODetectionWrapper(
                 img_folder=img_dir,
                 ann_file=ann_file,
-                transforms=create_transforms(is_training=True, img_size=img_size),
+                transforms=create_transforms(
+                    is_training=is_training, img_size=img_size
+                ),
             )
             all_datasets.append(ds)
 
-        train_dataset = ConcatDataset(all_datasets)
+        combined_dataset = ConcatDataset(all_datasets)
 
-        train_loader = DataLoader(
-            train_dataset,
+        loader = DataLoader(
+            combined_dataset,
             batch_size=batch_size,  # 2–8 is typical, memory permitting
-            shuffle=True,
+            shuffle=is_training,
             num_workers=max(4, batch_size // 2),  # adjust based on your CPU
             pin_memory=True,
             collate_fn=collate_fn,  # crucial
         )
+
+        return loader
+
+    def fit(self, datasets: List[Tuple[str | Path, str | Path]]) -> "FasterRcnnAdapter":
+        logger.info("Starting training...")
+
+        epochs = self.epochs
+
+        loader = self._create_loader(datasets, is_training=True)
 
         optimizer = self._create_optimizer()
 
         for epoch in range(1, epochs + 1):
             logger.info(f"Epoch {epoch}/{epochs}")
 
-            total_loss = 0.0
-
-            for imgs, targets in tqdm(train_loader):
-                imgs = list(img.to(self.device) for img in imgs)
-                targets = [
-                    {k: v.to(self.device) for k, v in t.items()} for t in targets
-                ]
-
-                loss_dict = self.model(imgs, targets)
-                loss = sum(loss for loss in loss_dict.values())
-
-                optimizer.zero_grad()
-                loss.backward()  # type: ignore
-                optimizer.step()
-
-                total_loss += loss.item()  # type: ignore
+            _ = self.train_epoch(optimizer, loader)
 
         return self
+
+    def train_epoch(
+        self,
+        optimizer: torch.optim.Optimizer,
+        loader: DataLoader,
+    ) -> float:
+        self.model.train()
+
+        total_loss = 0.0
+        for imgs, targets in tqdm(loader, desc="Training", unit="batch"):
+            imgs = list(img.to(self.device) for img in imgs)
+            targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
+
+            loss_dict = self.model(imgs, targets)
+            loss = sum(loss for loss in loss_dict.values())
+
+            optimizer.zero_grad()
+            loss.backward()  # type: ignore
+            optimizer.step()
+
+            total_loss += loss.item()  # type: ignore
+
+        return total_loss
+
+    def debug(
+        self,
+        train_datasets: List[Tuple[str | Path, str | Path]],
+        val_datasets: List[Tuple[str | Path, str | Path]],
+        results_path: str | Path,
+        results_name: str,
+    ) -> None:
+        logger.info("Debugging training and evaluation loops...")
+        epochs = self.epochs
+        train_loader = self._create_loader(train_datasets, is_training=True)
+        optimizer = self._create_optimizer()
+        saver = ResultSaver(results_path, name=results_name)
+        for epoch in range(1, epochs + 1):
+            logger.info(f"Debug Epoch {epoch}/{epochs}")
+            total_loss = self.train_epoch(optimizer, train_loader)
+            val_metrics = self.evaluate(val_datasets)
+            saver.save(
+                epoch=epoch,
+                loss=total_loss,
+                val_map=val_metrics["map_50_95"],
+                val_map_50=val_metrics["map_50"],
+            )
+            logger.info(
+                f"Debug Epoch {epoch}/{epochs} - Loss: {total_loss}, Val MAP: {val_metrics['map_50_95']}"
+            )
+
+        saver.plot(show=False)
 
     def evaluate(
         self, datasets: List[Tuple[str | Path, str | Path]]
@@ -299,32 +345,11 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         logger.info("Starting evaluation...")
         self.model.eval()
 
-        batch_size = self.batch_size
-        img_size = self.img_size
-
-        all_datasets = []
-        for img_dir, ann_file in datasets:
-            ds = COCODetectionWrapper(
-                img_folder=img_dir,
-                ann_file=ann_file,
-                transforms=create_transforms(is_training=False, img_size=img_size),
-            )
-            all_datasets.append(ds)
-
-        val_dataset = ConcatDataset(all_datasets)
-
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=batch_size,  # 2–8 is typical, memory permitting
-            shuffle=True,
-            num_workers=max(4, batch_size // 2),  # adjust based on your CPU
-            pin_memory=True,
-            collate_fn=collate_fn,  # crucial
-        )
+        loader = self._create_loader(datasets, is_training=False)
 
         metric = MeanAveragePrecision()
         with torch.no_grad():
-            for imgs, targets in val_loader:
+            for imgs, targets in loader:
                 imgs = list(img.to(self.device) for img in imgs)
                 outputs = self.model(imgs)
 
@@ -350,4 +375,8 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             img_size=self.img_size,
             batch_size=self.batch_size,
             epochs=self.epochs,
+            lr_backbone=self.lr_backbone,
+            lr_head=self.lr_head,
+            weight_decay_backbone=self.weight_decay_backbone,
+            weight_decay_head=self.weight_decay_head,
         )

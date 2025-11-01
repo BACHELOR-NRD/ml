@@ -5,6 +5,7 @@ from typing import Dict, List, Tuple
 
 import torch
 from tqdm import tqdm
+from torch.utils.data.dataloader import DataLoader
 from effdet.data import resolve_input_config
 from effdet import create_model, create_loader
 from effdet.anchors import Anchors, AnchorLabeler
@@ -56,7 +57,42 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         )
 
     def predict(self, images: List[torch.Tensor]) -> List[ADAPTER_PREDICTION]:
-        raise NotImplementedError("Predict method is not yet implemented.")
+        predictor = create_model(
+            model_name=self.backbone,
+            bench_task="predict",
+            num_classes=len(self.classes),
+        )
+        predictor.model.load_state_dict(self.model.model.state_dict())  # type: ignore
+        predictor.to(self.device)
+
+        predictions: List[ADAPTER_PREDICTION] = []
+
+        input_config = resolve_input_config(dict(), self.model.config)
+
+        val_loader = create_loader(
+            images,
+            input_size=input_config["input_size"],
+            batch_size=self.batch_size,
+            is_training=False,
+            use_prefetcher=False,
+            interpolation=input_config["interpolation"],
+            fill_color=input_config["fill_color"],
+            mean=input_config["mean"],
+            std=input_config["std"],
+            num_workers=4,
+            distributed=False,
+            pin_mem=False,
+            anchor_labeler=None,
+            transform_fn=None,
+            collate_fn=None,
+        )
+
+        with torch.no_grad():
+            for imgs in val_loader:
+                _ = self.model(imgs)
+                raise NotImplementedError("EfficientDet predict not implemented yet")
+
+        return predictions
 
     def setup(self) -> "EfficientDetAdapter":
         img_size = self.img_size
@@ -97,11 +133,41 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         logger.info("Starting training...")
         self.model.train()
 
-        batch_size = self.batch_size
         epochs = self.epochs
         opt = self.optimizer
         lr = self.lr
         weight_decay = self.weight_decay
+
+        train_loader = self._create_loader(datasets, is_training=True)
+
+        parser_max_label = train_loader.dataset.parsers[0].max_label  # type: ignore
+        config_num_classes = self.model.config.num_classes
+
+        if parser_max_label != config_num_classes:
+            raise ValueError(
+                f"Number of classes in dataset ({parser_max_label}) does not match "
+                f"model config ({config_num_classes})."
+                f"Please verify that the dataset is curated (classes IDs start from 1)"
+            )
+
+        optimizer = create_optimizer_v2(
+            self.model,
+            opt=opt,
+            lr=lr,
+            weight_decay=weight_decay,
+        )
+
+        for epoch in range(1, epochs + 1):
+            logger.info(f"Epoch {epoch}/{epochs}")
+
+            _ = self.train_epoch(optimizer, train_loader)  # type: ignore
+
+        return self
+
+    def _create_loader(
+        self, datasets: List[Tuple[str | Path, str | Path]], is_training: bool
+    ):
+        batch_size = self.batch_size
 
         all_datasets = []
         for img_dir, ann_file in datasets:
@@ -112,19 +178,15 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             )
             all_datasets.append(dataset)
 
-        train_dataset = ConcatDetectionDataset(all_datasets)
+        concat_dataset = ConcatDetectionDataset(all_datasets)
 
         input_config = resolve_input_config(dict(), self.model.config)
-        train_loader = create_loader(
-            train_dataset,
+        loader = create_loader(
+            concat_dataset,
             input_size=input_config["input_size"],
             batch_size=batch_size,
-            is_training=True,
+            is_training=is_training,
             use_prefetcher=True,
-            # NOTE: currrently not used
-            # re_prob=args.reprob,
-            # re_mode=args.remode,
-            # re_count=args.recount,
             interpolation=input_config["interpolation"],
             fill_color=input_config["fill_color"],
             mean=input_config["mean"],
@@ -137,36 +199,32 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             collate_fn=None,
         )
 
-        parser_max_label = train_loader.dataset.parsers[0].max_label  # type: ignore
-        config_num_classes = self.model.config.num_classes
+        return loader
 
-        if parser_max_label != config_num_classes:
-            raise ValueError(
-                f"Number of classes in dataset ({parser_max_label}) does not match "
-                f"model config ({config_num_classes})."
-                f"Please verify that the dataset is curated (classes IDs start from 1)"
-            )
+    def train_epoch(
+        self, optimizer: torch.optim.Optimizer, loader: DataLoader
+    ) -> float:
+        self.model.train()
 
-        for epoch in range(1, epochs + 1):
-            logger.info(f"Epoch {epoch}/{epochs}")
-            total_loss = 0.0
+        total_loss = 0.0
+        for imgs, targets in tqdm(loader):
+            output = self.model(imgs, targets)
+            loss = output["loss"]
+            total_loss += loss.item()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-            optimizer = create_optimizer_v2(
-                self.model,
-                opt=opt,
-                lr=lr,
-                weight_decay=weight_decay,
-            )
+        return total_loss
 
-            for imgs, targets in tqdm(train_loader):
-                output = self.model(imgs, targets)
-                loss = output["loss"]
-                total_loss += loss.item()
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-        return self
+    def debug(
+        self,
+        train_datasets: List[Tuple[str | Path, str | Path]],
+        val_datasets: List[Tuple[str | Path, str | Path]],
+        results_path: str | Path,
+        results_name: str,
+    ) -> None:
+        logger.info("Debugging training and evaluation loops...")
 
     def evaluate(
         self, datasets: List[Tuple[str | Path, str | Path]]

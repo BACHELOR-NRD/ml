@@ -24,7 +24,6 @@ class ADAPTER_PREDICTION(TypedDict):
     boxes: NDArray
     scores: NDArray
     labels: List[str]
-    image_ids: List[int]
 
 
 @dataclass
@@ -79,6 +78,17 @@ class BaseDetectionAdapter(ABC):
     @abstractmethod
     def clone(self) -> "BaseDetectionAdapter":
         """Create a new adapter instance."""
+        pass
+
+    @abstractmethod
+    def debug(
+        self,
+        train_datasets: List[Tuple[str | Path, str | Path]],
+        val_datasets: List[Tuple[str | Path, str | Path]],
+        results_path: str | Path,
+        results_name: str,
+    ) -> None:
+        """Debug training and evaluation loops."""
         pass
 
     # ------------------------

@@ -3,10 +3,12 @@ import datetime as dt
 from pathlib import Path
 from functools import partial
 from typing import Callable, Optional
+import warnings
 
 import optuna
 import pandas as pd
 from optuna import Trial
+
 
 from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
 from ml_carbucks.adapters.UltralyticsAdapter import (  # noqa: F401
@@ -21,6 +23,11 @@ from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks import DATA_DIR, RESULTS_DIR
 
 logger = setup_logger(__name__)
+
+warnings.filterwarnings(
+    "ignore",
+    message="grid_sampler_2d_backward_cuda does not have a deterministic implementation",
+)
 
 
 def execute_simple_study(
@@ -123,15 +130,15 @@ def create_objective(
                 dir=results_dir,
                 prefix=f"trial_{trial.number}_{adapter.__class__.__name__}",
             )
+            score = metrics["map_50_95"]
 
             logger.info(
-                f"Trial {trial.number} completed with params: {params}, metrics: {metrics}, saved at: {save_path}"
+                f"Trial {trial.number} completed with score: {score}, params: {params}, metrics: {metrics}, saved at: {save_path}"
             )
 
             trial.set_user_attr("params", params)
             trial.set_user_attr("metrics", metrics)
 
-            score = metrics["map_50_95"]
             return score
         except optuna.exceptions.TrialPruned as e:
             logger.error("Trial pruned")  # NOTE: this should be replace to logger

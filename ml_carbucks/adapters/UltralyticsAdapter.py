@@ -119,12 +119,22 @@ class UltralyticsAdapter(BaseDetectionAdapter):
                     result.names[int(label)]
                     for label in result.boxes.cls.cpu().numpy().tolist()
                 ],
-                image_ids=[result.orig_img_id] * len(result.boxes),
+                # image_ids=[result.orig_img_id] * len(result.boxes),
             )
 
             all_detections.append(prediction)
 
         return all_detections
+
+    def debug(
+        self,
+        train_datasets: List[Tuple[str | Path, str | Path]],
+        val_datasets: List[Tuple[str | Path, str | Path]],
+        results_path: str | Path,
+        results_name: str,
+    ) -> None:
+        logger.error("Debugging not implemented for UltralyticsAdapter.")
+        pass
 
     def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model{suffix}.pt"
