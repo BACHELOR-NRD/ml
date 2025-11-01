@@ -6,7 +6,6 @@ from typing import Callable, Optional
 
 import optuna
 import pandas as pd
-import pickle as pkl
 from optuna import Trial
 
 from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
@@ -124,7 +123,6 @@ def create_objective(
                 dir=results_dir,
                 prefix=f"trial_{trial.number}_{adapter.__class__.__name__}",
             )
-            pkl.dump(trial_adapter, open(save_path.with_suffix(".pkl"), "wb"))
 
             logger.info(
                 f"Trial {trial.number} completed with params: {params}, metrics: {metrics}, saved at: {save_path}"
@@ -188,8 +186,8 @@ if __name__ == "__main__":
     classes = ["scratch", "dent", "crack"]
     main(
         adapter_list=[
-            EfficientDetAdapter(classes=classes),
             RtdetrUltralyticsAdapter(classes=classes),
+            EfficientDetAdapter(classes=classes),
             YoloUltralyticsAdapter(classes=classes),
             FasterRcnnAdapter(classes=classes),
         ],
@@ -207,7 +205,7 @@ if __name__ == "__main__":
             )
         ],
         results_dir=RESULTS_DIR,
-        n_trials=15,
+        n_trials=5,
         patience=10,
         min_percentage_improvement=0.005,
         optimization_timeout=3 * 3600,  # N hours
