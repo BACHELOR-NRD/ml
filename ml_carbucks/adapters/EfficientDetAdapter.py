@@ -9,6 +9,7 @@ from torch.utils.data.dataloader import DataLoader
 from effdet.data import resolve_input_config
 from effdet import create_model, create_loader
 from effdet.anchors import Anchors, AnchorLabeler
+from ml_carbucks.utils.result_saver import ResultSaver
 from timm.optim._optim_factory import create_optimizer_v2
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
@@ -87,10 +88,21 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             collate_fn=None,
         )
 
+        predictor.eval()
         with torch.no_grad():
             for imgs in val_loader:
-                _ = self.model(imgs)
-                raise NotImplementedError("EfficientDet predict not implemented yet")
+                outputs = predictor(imgs)
+                for output in outputs:
+                    boxes = output["boxes"].cpu()
+                    scores = output["scores"].cpu()
+                    labels = output["labels"].cpu()
+                    predictions.append(
+                        {
+                            "boxes": boxes,
+                            "scores": scores,
+                            "labels": labels,
+                        }
+                    )
 
         return predictions
 
@@ -223,45 +235,45 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         val_datasets: List[Tuple[str | Path, str | Path]],
         results_path: str | Path,
         results_name: str,
-    ) -> None:
+    ) -> Dict[str, float]:
         logger.info("Debugging training and evaluation loops...")
+
+        epochs = self.epochs
+        train_loader = self._create_loader(train_datasets, is_training=True)
+        optimizer = create_optimizer_v2(
+            self.model,
+            opt=self.optimizer,
+            lr=self.lr,
+            weight_decay=self.weight_decay,
+        )
+        saver = ResultSaver(
+            path=results_path,
+            name=results_name,
+        )
+        for epoch in range(1, epochs + 1):
+            logger.info(f"Epoch {epoch}/{epochs}")
+
+            total_loss = self.train_epoch(optimizer, train_loader)  # type: ignore
+            val_metrics = self.evaluate(val_datasets)
+            saver.save(
+                epoch=epoch,
+                loss=total_loss,
+                val_map=val_metrics["map_50_95"],
+                val_map_50=val_metrics["map_50"],
+            )
+            logger.info(
+                f"Debug Epoch {epoch}/{epochs} - Loss: {total_loss}, Val MAP: {val_metrics['map_50_95']}"
+            )
+            saver.plot(show=False)
+
+        return val_metrics  # type: ignore
 
     def evaluate(
         self, datasets: List[Tuple[str | Path, str | Path]]
     ) -> Dict[str, float]:
         self.model.eval()
 
-        batch_size = self.batch_size
-
-        all_datasets = []
-        for img_dir, ann_file in datasets:
-            dataset = create_dataset_custom(
-                img_dir=img_dir,
-                ann_file=ann_file,
-                has_labels=True,
-            )
-            all_datasets.append(dataset)
-
-        dataset_val = ConcatDetectionDataset(all_datasets)
-
-        input_config = resolve_input_config(dict(), self.model.config)
-        val_loader = create_loader(
-            dataset_val,
-            input_size=input_config["input_size"],
-            batch_size=batch_size,
-            is_training=False,
-            use_prefetcher=True,
-            interpolation=input_config["interpolation"],
-            fill_color=input_config["fill_color"],
-            mean=input_config["mean"],
-            std=input_config["std"],
-            num_workers=4,
-            distributed=False,
-            pin_mem=False,
-            anchor_labeler=self.labeler,
-            transform_fn=None,
-            collate_fn=None,
-        )
+        val_loader = self._create_loader(datasets, is_training=False)
 
         evaluator = CocoStatsEvaluator(val_loader.dataset)
         total_loss = 0.0

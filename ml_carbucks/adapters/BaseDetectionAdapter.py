@@ -87,7 +87,7 @@ class BaseDetectionAdapter(ABC):
         val_datasets: List[Tuple[str | Path, str | Path]],
         results_path: str | Path,
         results_name: str,
-    ) -> None:
+    ) -> Dict[str, float]:
         """Debug training and evaluation loops."""
         pass
 
