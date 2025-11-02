@@ -58,6 +58,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             optimizer=self.optimizer,
             lr=self.lr,
             weight_decay=self.weight_decay,
+            confidence_threshold=self.confidence_threshold,
         )
 
     def _predict_preprocess_images_v2(self, images: List[torch.Tensor]):

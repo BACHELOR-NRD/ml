@@ -53,6 +53,9 @@ class TrialParamWrapper:
             "optimizer": trial.suggest_categorical("optimizer", ["momentum", "adam"]),
             "lr": trial.suggest_float("lr", 1e-4, 1e-2, log=True),
             "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
+            "confidence_threshold": trial.suggest_float(
+                "confidence_threshold", 0.1, 0.35
+            ),
         }
         return params
 
