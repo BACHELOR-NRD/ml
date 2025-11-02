@@ -4,14 +4,20 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 import torch
+import numpy as np
 from tqdm import tqdm
+from PIL import Image
 from torch.utils.data.dataloader import DataLoader
-from effdet.data import resolve_input_config
+from torchvision.ops import nms
 from effdet import create_model, create_loader
+from effdet.data import resolve_input_config, resolve_fill_color
+from effdet.bench import DetBenchPredict
 from effdet.anchors import Anchors, AnchorLabeler
-from ml_carbucks.utils.result_saver import ResultSaver
+from effdet.data.transforms import ResizePad, ImageToNumpy, Compose
 from timm.optim._optim_factory import create_optimizer_v2
 
+
+from ml_carbucks.utils.result_saver import ResultSaver
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     BaseDetectionAdapter,
     ADAPTER_PREDICTION,
@@ -57,52 +63,113 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             weight_decay=self.weight_decay,
         )
 
-    def predict(self, images: List[torch.Tensor]) -> List[ADAPTER_PREDICTION]:
-        predictor = create_model(
-            model_name=self.backbone,
-            bench_task="predict",
-            num_classes=len(self.classes),
-        )
-        predictor.model.load_state_dict(self.model.model.state_dict())  # type: ignore
-        predictor.to(self.device)
+    def _predict_preprocess_images(self, images: List[torch.Tensor]):
+        """
+        Convert list of [C,H,W] raw tensors to model-ready batch for EfficientDet.
+        """
 
+        input_config = resolve_input_config(self.get_params(), self.model.config)
+        img_size = self.model.config.image_size  # square int or tuple
+        mean = (
+            torch.tensor([x * 255 for x in input_config["mean"]])
+            .view(1, 3, 1, 1)
+            .to(self.device)
+        )
+        std = (
+            torch.tensor([x * 255 for x in input_config["std"]])
+            .view(1, 3, 1, 1)
+            .to(self.device)
+        )
+
+        # Compose transforms
+        transform = Compose([ResizePad(img_size), ImageToNumpy()])
+
+        batch_np = []
+
+        for img in images:
+
+            if isinstance(img, torch.Tensor):
+                img = img.permute(1, 2, 0).cpu().numpy()  # [H,W,C]
+            img_pil = Image.fromarray(img.astype(np.uint8))
+            img_proc, _ = transform(img_pil, {})  # no annotations
+            batch_np.append(img_proc)
+
+        # Stack
+        batch_np = np.stack(batch_np, axis=0)  # [B,C,H,W]
+        batch_tensor = torch.from_numpy(batch_np).float().to(self.device)
+        batch_tensor = batch_tensor.sub_(mean).div_(std)  # normalize
+
+        return batch_tensor
+
+    def _predict_preprocess_images_v2(self, images: List[torch.Tensor]):
+        input_config = resolve_input_config(self.get_params(), self.model.config)
+        fill_color = resolve_fill_color(
+            input_config["fill_color"], input_config["mean"]
+        )
+        transform = Compose(
+            [
+                ResizePad(
+                    target_size=self.img_size,
+                    interpolation=input_config["interpolation"],
+                    fill_color=fill_color,
+                ),
+                ImageToNumpy(),
+            ]
+        )
+
+        batch_list = []
+        img_scaled = []
+
+        for img in images:
+            if isinstance(img, torch.Tensor):
+                img = img.permute(1, 2, 0).cpu().numpy()  # [H,W,C]
+            img_pil = Image.fromarray(img.astype(np.uint8))
+            img_proc, anno = transform(img_pil, dict())  # no annotations
+            batch_list.append(img_proc)
+            img_scaled.append(anno.get("img_scale", 1.0))
+
+        batch_np = np.stack(batch_list, axis=0)  # [B,C,H,W]
+        batch_tensor = torch.from_numpy(batch_np).float().to(self.device)
+
+        return batch_tensor, img_scaled
+
+    def predict(
+        self,
+        images: List[torch.Tensor],
+        conf_threshold: float = 0.25,
+        iou_threshold: float = 0.45,
+        max_detections: int = 100,
+    ) -> List[ADAPTER_PREDICTION]:
+        predictor = DetBenchPredict(deepcopy(self.model.model))
+        predictor.to(self.device)
+        predictor.eval()
         predictions: List[ADAPTER_PREDICTION] = []
 
-        input_config = resolve_input_config(dict(), self.model.config)
-
-        val_loader = create_loader(
-            images,
-            input_size=input_config["input_size"],
-            batch_size=self.batch_size,
-            is_training=False,
-            use_prefetcher=False,
-            interpolation=input_config["interpolation"],
-            fill_color=input_config["fill_color"],
-            mean=input_config["mean"],
-            std=input_config["std"],
-            num_workers=4,
-            distributed=False,
-            pin_mem=False,
-            anchor_labeler=None,
-            transform_fn=None,
-            collate_fn=None,
-        )
-
-        predictor.eval()
         with torch.no_grad():
-            for imgs in val_loader:
-                outputs = predictor(imgs)
-                for output in outputs:
-                    boxes = output["boxes"].cpu()
-                    scores = output["scores"].cpu()
-                    labels = output["labels"].cpu()
-                    predictions.append(
-                        {
-                            "boxes": boxes,
-                            "scores": scores,
-                            "labels": labels,
-                        }
-                    )
+            batch_tensor, batch_scales = self._predict_preprocess_images_v2(images)
+            outputs = predictor(batch_tensor)
+
+            for i, pred in enumerate(outputs):
+                out = pred.cpu()  # move to CPU
+                boxes = out[:, :4]
+                scores = out[:, 4]
+                labels_idx = out[:, 5].long()
+
+                # filter by confidence
+                mask = scores >= conf_threshold
+                boxes, scores, labels_idx = boxes[mask], scores[mask], labels_idx[mask]
+
+                # apply NMS per image
+                keep = nms(boxes, scores, iou_threshold)
+                keep = keep[:max_detections]  # take top-k
+
+                boxes = boxes[keep].numpy().copy()
+                boxes *= batch_scales[i]
+
+                scores = scores[keep].numpy()
+                labels = [self.classes[idx - 1] for idx in labels_idx[keep]]
+
+                predictions.append({"boxes": boxes, "scores": scores, "labels": labels})
 
         return predictions
 
@@ -192,7 +259,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         concat_dataset = ConcatDetectionDataset(all_datasets)
 
-        input_config = resolve_input_config(dict(), self.model.config)
+        input_config = resolve_input_config(self.get_params(), self.model.config)
         loader = create_loader(
             concat_dataset,
             input_size=input_config["input_size"],
