@@ -11,7 +11,7 @@ from torch.utils.data.dataloader import DataLoader
 from torchvision.ops import nms
 from effdet import create_model, create_loader
 from effdet.data import resolve_input_config, resolve_fill_color
-from effdet.bench import DetBenchPredict
+from effdet.bench import DetBenchPredict  # noqa F401
 from effdet.anchors import Anchors, AnchorLabeler
 from effdet.data.transforms import ResizePad, ImageToNumpy, Compose
 from timm.optim._optim_factory import create_optimizer_v2
@@ -62,44 +62,6 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             lr=self.lr,
             weight_decay=self.weight_decay,
         )
-
-    def _predict_preprocess_images(self, images: List[torch.Tensor]):
-        """
-        Convert list of [C,H,W] raw tensors to model-ready batch for EfficientDet.
-        """
-
-        input_config = resolve_input_config(self.get_params(), self.model.config)
-        img_size = self.model.config.image_size  # square int or tuple
-        mean = (
-            torch.tensor([x * 255 for x in input_config["mean"]])
-            .view(1, 3, 1, 1)
-            .to(self.device)
-        )
-        std = (
-            torch.tensor([x * 255 for x in input_config["std"]])
-            .view(1, 3, 1, 1)
-            .to(self.device)
-        )
-
-        # Compose transforms
-        transform = Compose([ResizePad(img_size), ImageToNumpy()])
-
-        batch_np = []
-
-        for img in images:
-
-            if isinstance(img, torch.Tensor):
-                img = img.permute(1, 2, 0).cpu().numpy()  # [H,W,C]
-            img_pil = Image.fromarray(img.astype(np.uint8))
-            img_proc, _ = transform(img_pil, {})  # no annotations
-            batch_np.append(img_proc)
-
-        # Stack
-        batch_np = np.stack(batch_np, axis=0)  # [B,C,H,W]
-        batch_tensor = torch.from_numpy(batch_np).float().to(self.device)
-        batch_tensor = batch_tensor.sub_(mean).div_(std)  # normalize
-
-        return batch_tensor
 
     def _predict_preprocess_images_v2(self, images: List[torch.Tensor]):
         input_config = resolve_input_config(self.get_params(), self.model.config)
