@@ -123,6 +123,9 @@ class COCODetectionWrapper(Dataset):
             img = sample["image"]
             boxes_coco = np.array(sample["bboxes"], dtype=np.float32)
             labels = np.array(sample["labels"], dtype=np.int64)
+        else:
+            # If no transforms are applied, make sure that img is a np array with proper permutations
+            img = np.array(img, dtype=np.uint8).transpose(2, 0, 1)
 
         # Convert COCO to VOC format
         if boxes_coco.shape[0] > 0:
@@ -165,7 +168,7 @@ def create_loader(
         ds = COCODetectionWrapper(
             img_folder=img_folder,
             ann_file=ann_file,
-            transforms=transforms,
+            transforms=transforms or A.Compose([ToTensorV2()]),
         )
         all_datasets.append(ds)
 
