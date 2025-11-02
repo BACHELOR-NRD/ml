@@ -102,6 +102,12 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         iou_threshold: float = 0.45,
         max_detections: int = 100,
     ) -> List[ADAPTER_PREDICTION]:
+
+        # NOTE: Something is wrong PROBABLY HERE, it needs to be verified more
+        """
+        The issue is that predicitons are weird but the results of the evaluation
+        are good. So either the evaluation is wrong or the prediction extraction is wrong.
+        """
         predictor = DetBenchPredict(deepcopy(self.model.model))
         predictor.to(self.device)
         predictor.eval()
