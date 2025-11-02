@@ -227,9 +227,17 @@ if __name__ == "__main__":
     classes = ["scratch", "dent", "crack"]
     main(
         adapter_list=[
-            RtdetrUltralyticsAdapter(classes=classes),
+            RtdetrUltralyticsAdapter(
+                classes=classes,
+                name="rtdetr",
+                project_dir=RESULTS_DIR / "optuna_ultralytics",
+            ),
             EfficientDetAdapter(classes=classes),
-            YoloUltralyticsAdapter(classes=classes),
+            YoloUltralyticsAdapter(
+                classes=classes,
+                name="yolo",
+                project_dir=RESULTS_DIR / "optuna_ultralytics",
+            ),
             FasterRcnnAdapter(classes=classes),
         ],
         runtime=dt.datetime.now().strftime("%Y%m%d_%H%M%S"),
@@ -246,9 +254,9 @@ if __name__ == "__main__":
             )
         ],
         results_dir=RESULTS_DIR,
-        n_trials=20,
+        n_trials=30,
         patience=10,
         min_percentage_improvement=0.005,
-        optimization_timeout=5 * 3600,  # N hours
+        optimization_timeout=6 * 3600,  # N hours
     )
     # debug()

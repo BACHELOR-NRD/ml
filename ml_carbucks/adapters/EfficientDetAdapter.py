@@ -9,13 +9,12 @@ from tqdm import tqdm
 from PIL import Image
 from torch.utils.data.dataloader import DataLoader
 from torchvision.ops import nms
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from effdet import create_model, create_loader
 from effdet.data import resolve_input_config, resolve_fill_color
 from effdet.bench import DetBenchPredict  # noqa F401
-from effdet.anchors import Anchors, AnchorLabeler
 from effdet.data.transforms import ResizePad, ImageToNumpy, Compose
 from timm.optim._optim_factory import create_optimizer_v2
-
 
 from ml_carbucks.utils.result_saver import ResultSaver
 from ml_carbucks.adapters.BaseDetectionAdapter import (
@@ -23,7 +22,6 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_PREDICTION,
 )
 from ml_carbucks.utils.effdet_extension import (
-    CocoStatsEvaluator,
     ConcatDetectionDataset,
     create_dataset_custom,
 )
@@ -37,11 +35,11 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
     weights: str | Path = ""
     backbone: str = "tf_efficientdet_d0"
-    bench_labeler: bool = False
 
     optimizer: str = "momentum"
     lr: float = 8e-3
     weight_decay: float = 5e-5
+    confidence_threshold: float = 0.2
 
     def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model{suffix}.pth"
@@ -57,7 +55,6 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             batch_size=self.batch_size,
             epochs=self.epochs,
             backbone=self.backbone,
-            bench_labeler=self.bench_labeler,
             optimizer=self.optimizer,
             lr=self.lr,
             weight_decay=self.weight_decay,
@@ -102,8 +99,6 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         iou_threshold: float = 0.45,
         max_detections: int = 100,
     ) -> List[ADAPTER_PREDICTION]:
-
-        # NOTE: Something is wrong PROBABLY HERE, it needs to be verified more
         """
         The issue is that predicitons are weird but the results of the evaluation
         are good. So either the evaluation is wrong or the prediction extraction is wrong.
@@ -114,29 +109,39 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         predictions: List[ADAPTER_PREDICTION] = []
 
         with torch.no_grad():
+            img_sizes = torch.tensor(
+                [[img.shape[1], img.shape[2]] for img in images], dtype=torch.float32
+            ).to(self.device)
+
             batch_tensor, batch_scales = self._predict_preprocess_images_v2(images)
-            outputs = predictor(batch_tensor)
+
+            img_scales = torch.tensor(batch_scales, dtype=torch.float32).to(self.device)
+            img_info_dict = {
+                "img_scale": img_scales,
+                "img_size": img_sizes,
+            }
+
+            outputs = predictor(batch_tensor, img_info=img_info_dict)
 
             for i, pred in enumerate(outputs):
-                out = pred.cpu()  # move to CPU
-                boxes = out[:, :4]
-                scores = out[:, 4]
-                labels_idx = out[:, 5].long()
+                mask = pred[:, 4] >= conf_threshold
+                if mask.sum() == 0:
+                    boxes = np.zeros((0, 4), dtype=np.float32)
+                    scores = np.zeros((0,), dtype=np.float32)
+                    labels = []
+                else:
+                    boxes = pred[mask, :4]
+                    scores = pred[mask, 4]
+                    labels_idx = pred[mask, 5].long()
 
-                # filter by confidence
-                mask = scores >= conf_threshold
-                boxes, scores, labels_idx = boxes[mask], scores[mask], labels_idx[mask]
+                    # apply NMS per image
+                    keep = nms(boxes, scores, iou_threshold)
+                    keep = keep[:max_detections]  # take top-k
 
-                # apply NMS per image
-                keep = nms(boxes, scores, iou_threshold)
-                keep = keep[:max_detections]  # take top-k
+                    boxes = boxes[keep].cpu().numpy().copy()
 
-                boxes = boxes[keep].numpy().copy()
-                boxes *= batch_scales[i]
-
-                scores = scores[keep].numpy()
-                labels = [self.classes[idx - 1] for idx in labels_idx[keep]]
-
+                    scores = scores[keep].cpu().numpy()
+                    labels = [self.classes[idx - 1] for idx in labels_idx[keep]]
                 predictions.append({"boxes": boxes, "scores": scores, "labels": labels})
 
         return predictions
@@ -146,10 +151,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         backbone = self.backbone
         weights = self.weights
-        bench_labeler = self.bench_labeler
 
-        # NOTE: img size would need to be updated here if we want to change it
-        # I dont think it is possible to change it after model creation
         extra_args = dict(image_size=(img_size, img_size))
         self.model = create_model(
             model_name=backbone,
@@ -157,20 +159,14 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             num_classes=len(self.classes),
             pretrained=weights == "",
             checkpoint_path=str(weights),
-            bench_labeler=bench_labeler,
+            # NOTE: we set it to True because we are using custom Mean Average Precision and it is easier that way
+            # custom anchor labeler would be good idea if the boxes had unusual sizes and aspect ratios -> worth remembering for future
+            bench_labeler=True,
             checkpoint_ema=False,
             **extra_args,
         )
 
         self.model.to(self.device)
-
-        self.labeler = None
-        if bench_labeler is False:
-            self.labeler = AnchorLabeler(
-                Anchors.from_config(self.model.config),
-                self.model.config.num_classes,
-                match_threshold=0.5,
-            )
 
         return self
 
@@ -241,7 +237,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             num_workers=4,
             distributed=False,
             pin_mem=False,
-            anchor_labeler=self.labeler,
+            anchor_labeler=None,
             transform_fn=None,
             collate_fn=None,
         )
@@ -285,6 +281,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             path=results_path,
             name=results_name,
         )
+        val_metrics = dict()
         for epoch in range(1, epochs + 1):
             logger.info(f"Epoch {epoch}/{epochs}")
 
@@ -301,7 +298,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             )
             saver.plot(show=False)
 
-        return val_metrics  # type: ignore
+        return val_metrics
 
     def evaluate(
         self, datasets: List[Tuple[str | Path, str | Path]]
@@ -310,18 +307,73 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         val_loader = self._create_loader(datasets, is_training=False)
 
-        evaluator = CocoStatsEvaluator(val_loader.dataset)
+        evaluator = MeanAveragePrecision(extended_summary=False, class_metrics=False)
         total_loss = 0.0
+
         with torch.no_grad():
             for imgs, targets in val_loader:
                 output = self.model(imgs, targets)
                 loss = output["loss"]
                 total_loss += loss.item()
-                evaluator.add_predictions(output["detections"], targets)
 
-        results = evaluator.evaluate()
+                # NOTE:
+                # Annotations are loaded in yxyx format and they are scaled
+                # Predicitons are in xyxy format and not scaled (original size of the image)
+                # So we need to rescale the ground truth boxes to original sizes
+                # Predicitons have a lot of low confidence scores and ground_truths have a lot of -1 values that just indicate no object
+                # We need to filter them out
+                for i in range(len(imgs)):
+                    scale = (
+                        targets[i]["img_scale"] if "img_scale" in targets[i] else 1.0
+                    )
+
+                    pred_mask = (
+                        output["detections"][i][:, 4] >= self.confidence_threshold
+                    )
+                    if pred_mask.sum() == 0:
+                        # No predcitions above the confidence threshold
+                        pred_boxes = torch.zeros((0, 4), dtype=torch.float32)
+                        pred_scores = torch.zeros((0,), dtype=torch.float32)
+                        pred_labels = torch.zeros((0,), dtype=torch.int64)
+                    else:
+                        pred_boxes = output["detections"][i][pred_mask, :4]
+                        pred_scores = output["detections"][i][pred_mask, 4]
+                        pred_labels = output["detections"][i][pred_mask, 5].long()
+
+                    gt_mask = targets["cls"][i] != -1
+                    if gt_mask.sum() == 0:
+                        # No ground truth boxes
+                        gt_boxes = torch.zeros((0, 4), dtype=torch.float32)
+                        gt_labels = torch.zeros((0,), dtype=torch.int64)
+                    else:
+                        gt_boxes_yxyx_raw = targets["boxes"][i][gt_mask]
+                        gt_boxes_xyxy = torch.zeros_like(gt_boxes_yxyx_raw)
+                        gt_boxes_xyxy[:, 0] = gt_boxes_yxyx_raw[:, 1]
+                        gt_boxes_xyxy[:, 1] = gt_boxes_yxyx_raw[:, 0]
+                        gt_boxes_xyxy[:, 2] = gt_boxes_yxyx_raw[:, 3]
+                        gt_boxes_xyxy[:, 3] = gt_boxes_yxyx_raw[:, 2]
+                        gt_boxes = gt_boxes_xyxy * scale
+                        gt_labels = targets["cls"][i][gt_mask].long()
+
+                    evaluator.update(
+                        preds=[
+                            {
+                                "boxes": pred_boxes,
+                                "scores": pred_scores,
+                                "labels": pred_labels,
+                            }
+                        ],
+                        target=[
+                            {
+                                "boxes": gt_boxes,
+                                "labels": gt_labels,
+                            }
+                        ],
+                    )
+        results = evaluator.compute()
         metrics = {
-            "map_50": results[1],
-            "map_50_95": results[0],
+            "map_50": results["map_50"].item(),
+            "map_50_95": results["map"].item(),
         }
+
         return metrics

@@ -21,7 +21,7 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
     BaseDetectionAdapter,
 )
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks.utils.preprocessing import create_loader, create_transforms
+from ml_carbucks.utils.preprocessing import create_clean_loader, create_transforms
 from ml_carbucks.utils.result_saver import ResultSaver
 
 logger = setup_logger(__name__)
@@ -172,7 +172,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         batch_size = self.batch_size
         img_size = self.img_size
 
-        return create_loader(
+        return create_clean_loader(
             datasets,
             shuffle=is_training,
             batch_size=batch_size,
@@ -260,7 +260,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         loader = self._create_loader(datasets, is_training=False)
 
-        metric = MeanAveragePrecision()
+        evaluator = MeanAveragePrecision(extended_summary=False, class_metrics=False)
         with torch.no_grad():
             for imgs, targets in loader:
                 imgs = list(img.to(self.device) for img in imgs)
@@ -270,9 +270,9 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
                 targets_cpu = [{k: v.cpu() for k, v in t.items()} for t in targets]
                 outputs_cpu = [{k: v.cpu() for k, v in o.items()} for o in outputs]
 
-                metric.update(outputs_cpu, targets_cpu)
+                evaluator.update(outputs_cpu, targets_cpu)
 
-        results = metric.compute()
+        results = evaluator.compute()
 
         metrics = {
             "map_50": results["map_50"].item(),

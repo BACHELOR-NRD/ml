@@ -14,7 +14,7 @@ from ml_carbucks.adapters.UltralyticsAdapter import (
 )
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.postprocessing import merge_model_predictions
-from ml_carbucks.utils.preprocessing import create_loader
+from ml_carbucks.utils.preprocessing import create_clean_loader
 
 logger = setup_logger(__name__)
 
@@ -41,7 +41,9 @@ class EnsembleModel:
     ) -> List[dict]:
 
         metrics = [MeanAveragePrecision() for _ in self.adapters]
-        loader = create_loader(datasets, shuffle=False, transforms=None, batch_size=8)
+        loader = create_clean_loader(
+            datasets, shuffle=False, transforms=None, batch_size=8
+        )
         results = []
         for adapter_idx, adapter in enumerate(self.adapters):
             logger.info(f"Evaluating adapter: {adapter.__class__.__name__}")
@@ -58,7 +60,9 @@ class EnsembleModel:
         self, datasets: List[Tuple[str | Path, str | Path]]
     ) -> Dict[str, float]:
 
-        loader = create_loader(datasets, shuffle=False, transforms=None, batch_size=8)
+        loader = create_clean_loader(
+            datasets, shuffle=False, transforms=None, batch_size=8
+        )
         metric = MeanAveragePrecision()
         for images, targets in loader:
             batch_preds = []
@@ -175,7 +179,7 @@ def test_3(m1, m2, metric_name: str):
 
 
 def debug_1():
-    loader = create_loader(train_datasets, shuffle=False, transforms=None, batch_size=2)  # type: ignore
+    loader = create_clean_loader(train_datasets, shuffle=False, transforms=None, batch_size=2)  # type: ignore
     model = EfficientDetAdapter(
         classes=["scratch", "dent", "crack"],
         **{
