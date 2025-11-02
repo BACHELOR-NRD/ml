@@ -80,19 +80,19 @@ class EnsembleModel:
 
 ensemble = EnsembleModel(
     adapters=[
-        YoloUltralyticsAdapter(
-            classes=["scratch", "dent", "crack"],
-            **{
-                "img_size": 384,
-                "batch_size": 32,
-                "epochs": 27,
-                "lr": 0.0015465639515144544,
-                "momentum": 0.3628781599889685,
-                "weight_decay": 0.0013127041660177367,
-                "optimizer": "NAdam",
-            },
-            weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_YoloUltralyticsAdaptermodel.pt",
-        ),
+        # YoloUltralyticsAdapter(
+        #     classes=["scratch", "dent", "crack"],
+        #     **{
+        #         "img_size": 384,
+        #         "batch_size": 32,
+        #         "epochs": 27,
+        #         "lr": 0.0015465639515144544,
+        #         "momentum": 0.3628781599889685,
+        #         "weight_decay": 0.0013127041660177367,
+        #         "optimizer": "NAdam",
+        #     },
+        #     weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_YoloUltralyticsAdaptermodel.pt",
+        # ),
         # RtdetrUltralyticsAdapter(
         #     classes=["scratch", "dent", "crack"],
         #     **{
@@ -106,19 +106,19 @@ ensemble = EnsembleModel(
         #     },
         #     weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_RtdetrUltralyticsAdaptermodel.pt",
         # ),
-        # FasterRcnnAdapter(
-        #     classes=["scratch", "dent", "crack"],
-        #     **{
-        #         "img_size": 384,
-        #         "batch_size": 8,
-        #         "epochs": 21,
-        #         "lr_backbone": 2.6373762637681257e-05,
-        #         "lr_head": 0.0011244046084737927,
-        #         "weight_decay_backbone": 0.000796017512818448,
-        #         "weight_decay_head": 0.0005747409908715994,
-        #     },
-        #     weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_FasterRcnnAdaptermodel.pth",
-        # ),
+        FasterRcnnAdapter(
+            classes=["scratch", "dent", "crack"],
+            **{
+                "img_size": 384,
+                "batch_size": 8,
+                "epochs": 21,
+                "lr_backbone": 2.6373762637681257e-05,
+                "lr_head": 0.0011244046084737927,
+                "weight_decay_backbone": 0.000796017512818448,
+                "weight_decay_head": 0.0005747409908715994,
+            },
+            weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_FasterRcnnAdaptermodel.pth",
+        ),
         # EfficientDetAdapter(
         #     classes=["scratch", "dent", "crack"],
         #     **{
@@ -176,22 +176,22 @@ def test_3(m1, m2, metric_name: str):
 
 def debug_1():
     loader = create_loader(train_datasets, shuffle=False, transforms=None, batch_size=2)  # type: ignore
-    ymodel = YoloUltralyticsAdapter(
+    model = FasterRcnnAdapter(
         classes=["scratch", "dent", "crack"],
         **{
             "img_size": 384,
-            "batch_size": 32,
-            "epochs": 27,
-            "lr": 0.0015465639515144544,
-            "momentum": 0.3628781599889685,
-            "weight_decay": 0.0013127041660177367,
-            "optimizer": "NAdam",
+            "batch_size": 8,
+            "epochs": 21,
+            "lr_backbone": 2.6373762637681257e-05,
+            "lr_head": 0.0011244046084737927,
+            "weight_decay_backbone": 0.000796017512818448,
+            "weight_decay_head": 0.0005747409908715994,
         },
-        weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_YoloUltralyticsAdaptermodel.pt",
+        weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_FasterRcnnAdaptermodel.pth",
     ).setup()
 
     for images, targets in loader:
-        preds = ymodel.predict(images)
+        preds = model.predict(images)
         logger.info(f"Predictions: {preds}")
         logger.info(f"Targets: {targets}")
 
