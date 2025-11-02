@@ -14,6 +14,7 @@ def plot_img_pred(
     coords: Literal["xyxy", "yxyx", "xywh"],
     save_dir: Union[str, bool] = False,
     figsize: tuple = (10, 10),
+    color="red",
 ):
     """
     Plot the predicted bounding boxes on the image.
@@ -59,7 +60,7 @@ def plot_img_pred(
         w = xmax - xmin
         h = ymax - ymin
 
-        plt.gca().add_patch(Rectangle((x, y), w, h, fill=False, color="red"))
+        plt.gca().add_patch(Rectangle((x, y), w, h, fill=False, color=color))
     plt.axis("off")
     plt.show()
 
