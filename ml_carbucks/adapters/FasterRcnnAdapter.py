@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import numpy as np
 import torch
 from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
@@ -13,6 +14,7 @@ from torchvision.models.detection.faster_rcnn import (
     FasterRCNN_ResNet50_FPN_Weights,
 )
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
+from torchvision.ops import nms
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_PREDICTION,
@@ -41,28 +43,74 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         torch.save(self.model.state_dict(), save_path)
         return save_path
 
-    def predict(self, images: List[torch.Tensor]) -> List[ADAPTER_PREDICTION]:
+    def predict(
+        self,
+        images: List[torch.Tensor],
+        conf_threshold: float = 0.25,
+        iou_threshold: float = 0.45,
+        max_detections: int = 100,
+    ) -> List[ADAPTER_PREDICTION]:
         self.model.eval()
-        images = [img.to(self.device) for img in images]
+        images_fasterrcnn = [img.to(self.device).float() for img in images]
+
+        if any(img.max() > 1.0 for img in images_fasterrcnn):
+            logger.debug("Normalizing images for Faster R-CNN inference...")
+            images_fasterrcnn = [img / 255.0 for img in images_fasterrcnn]
 
         with torch.no_grad():
-            outputs = self.model(images)
+            outputs = self.model(images_fasterrcnn)
 
-        predictions: List[ADAPTER_PREDICTION] = []
+        processed_predictions: List[ADAPTER_PREDICTION] = []
         for output in outputs:
-            boxes = output["boxes"].cpu().numpy()
-            scores = output["scores"].cpu().numpy()
-            labels = output["labels"].cpu().numpy()
+            boxes = output["boxes"]
+            scores = output["scores"]
+            labels = output["labels"]
 
-            predictions.append(
+            # Apply confidence threshold
+            mask = scores >= conf_threshold
+            boxes, scores, labels = boxes[mask], scores[mask], labels[mask]
+
+            if boxes.numel() == 0:
+                processed_predictions.append(
+                    {
+                        "boxes": np.ndarray([]).tolist(),
+                        "scores": np.ndarray([]).tolist(),
+                        "labels": np.ndarray([]).tolist(),
+                    }
+                )
+                continue
+
+            # Apply NMS
+            keep_indices = []
+            for cls in labels.unique():
+                cls_mask = labels == cls
+                cls_boxes = boxes[cls_mask]
+                cls_scores = scores[cls_mask]
+                cls_indices = nms(cls_boxes, cls_scores, iou_threshold)
+                # Map back to original indices
+                keep_indices.append(
+                    torch.nonzero(cls_mask, as_tuple=False).squeeze(1)[cls_indices]
+                )
+
+            keep_indices = torch.cat(keep_indices)
+            sorted_idx = scores[keep_indices].argsort(descending=True)[:max_detections]
+            final_indices = keep_indices[sorted_idx]
+
+            final_boxes = boxes[final_indices].cpu().numpy().tolist()
+            final_scores = scores[final_indices].cpu().numpy().tolist()
+            final_labels = [
+                self.classes[label - 1] for label in labels[final_indices].cpu().numpy()
+            ]
+
+            processed_predictions.append(
                 {
-                    "boxes": boxes,
-                    "scores": scores,
-                    "labels": labels,
+                    "boxes": final_boxes,
+                    "scores": final_scores,
+                    "labels": final_labels,
                 }
             )
 
-        return predictions
+        return processed_predictions
 
     def setup(self) -> "FasterRcnnAdapter":
         logger.debug("Creating Faster R-CNN model...")

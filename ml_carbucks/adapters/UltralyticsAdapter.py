@@ -100,18 +100,21 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
         return metrics
 
-    def predict(self, images: List[torch.Tensor]) -> List[ADAPTER_PREDICTION]:
+    def predict(
+        self,
+        images: List[torch.Tensor],
+        conf_threshold: float = 0.25,
+        iou_threshold: float = 0.45,
+        max_detections: int = 100,
+    ) -> List[ADAPTER_PREDICTION]:
         logger.info("Starting prediction...")
 
-        # NOTE: This could be parameterized as needed
-        conf_threshold = 0.25
-        iou_threshold = 0.45
-        max_detections = 100
-
-        images_np = [img_tensor.permute(1, 2, 0).cpu().numpy() for img_tensor in images]
+        images_yolo = [
+            img_tensor.permute(1, 2, 0).cpu().numpy() for img_tensor in images
+        ]
 
         results = self.model.predict(  # type: ignore
-            source=images_np,
+            source=images_yolo,
             imgsz=self.img_size,
             batch=len(images),
             # --- Prediction parameters ---
