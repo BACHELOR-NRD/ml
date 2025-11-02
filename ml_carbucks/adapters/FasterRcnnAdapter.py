@@ -83,8 +83,8 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             )
         elif weights is not None and Path(weights).is_file():
             self.model = fasterrcnn_resnet50_fpn(
-                pretrained=False, num_classes=len(self.classes) + 1
-            )
+                num_classes=len(self.classes) + 1
+            )  # +1 for background
             checkpoint = torch.load(weights, map_location=self.device)  # type: ignore
             self.model.load_state_dict(checkpoint)
         else:

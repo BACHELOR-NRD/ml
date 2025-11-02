@@ -31,6 +31,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     training_save: bool = True
     verbose: bool = False
     project_dir: str | Path | None = None
+    name: str | None = None
 
     def fit(
         self, datasets: List[Tuple[str | Path, str | Path]]
@@ -52,7 +53,8 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             # --- Core parameters ---
             data=data_yaml,
             seed=self.seed,
-            name=self.project_dir,
+            name=self.name,
+            project=self.project_dir,
             save=self.training_save,
             verbose=self.verbose,
             val=False,
@@ -63,6 +65,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             lr0=self.lr,
             momentum=self.momentum,
             weight_decay=self.weight_decay,
+            optimizer=self.optimizer,
         )
 
         return self
@@ -86,6 +89,8 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         results = self.model.val(
             data=data_yaml,
             verbose=self.verbose,
+            project=self.project_dir,
+            name=self.name,
         )
 
         metrics = {
@@ -103,8 +108,13 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         iou_threshold = 0.45
         max_detections = 100
 
+        images_np = [img_tensor.permute(1, 2, 0).cpu().numpy() for img_tensor in images]
+
         results = self.model.predict(  # type: ignore
-            imgs=images,
+            source=images_np,
+            imgsz=self.img_size,
+            batch=len(images),
+            # --- Prediction parameters ---
             conf=conf_threshold,
             iou=iou_threshold,
             max_det=max_detections,
@@ -249,6 +259,7 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
             training_save=self.training_save,
             verbose=self.verbose,
             project_dir=self.project_dir,
+            name=self.name,
         )
 
 
@@ -278,4 +289,5 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
             training_save=self.training_save,
             verbose=self.verbose,
             project_dir=self.project_dir,
+            name=self.name,
         )
