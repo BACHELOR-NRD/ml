@@ -156,7 +156,7 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def create_loader(
+def create_clean_loader(
     datasets: list[tuple[str | Path, str | Path]],
     shuffle: bool,
     batch_size: int,
