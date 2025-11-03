@@ -1,12 +1,14 @@
 from copy import deepcopy
 import time
 import json
+import numpy as np
 import yaml
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 import torch
+from torchvision.ops import nms
 from ultralytics.models.yolo import YOLO
 from ultralytics.models.rtdetr import RTDETR
 
@@ -99,45 +101,6 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         }
 
         return metrics
-
-    def predict(
-        self,
-        images: List[torch.Tensor],
-        conf_threshold: float = 0.20,
-        iou_threshold: float = 0.40,
-        max_detections: int = 100,
-    ) -> List[ADAPTER_PREDICTION]:
-        logger.info("Starting prediction...")
-
-        images_yolo = [
-            img_tensor.permute(1, 2, 0).cpu().numpy() for img_tensor in images
-        ]
-
-        results = self.model.predict(  # type: ignore
-            source=images_yolo,
-            imgsz=self.img_size,
-            batch=len(images),
-            # --- Prediction parameters ---
-            conf=conf_threshold,
-            iou=iou_threshold,
-            max_det=max_detections,
-        )
-
-        all_detections: List[ADAPTER_PREDICTION] = []
-        for result in results:
-            prediction = ADAPTER_PREDICTION(
-                boxes=result.boxes.xyxy.cpu().numpy().tolist(),
-                scores=result.boxes.conf.cpu().numpy().tolist(),
-                labels=[
-                    result.names[int(label)]
-                    for label in result.boxes.cls.cpu().numpy().tolist()
-                ],
-                # image_ids=[result.orig_img_id] * len(result.boxes),
-            )
-
-            all_detections.append(prediction)
-
-        return all_detections
 
     def debug(
         self,
@@ -265,6 +228,44 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
             name=self.name,
         )
 
+    def predict(
+        self,
+        images: List[torch.Tensor],
+        conf_threshold: float = 0.25,
+        iou_threshold: float = 0.45,
+        max_detections: int = 100,
+    ) -> List[ADAPTER_PREDICTION]:
+        logger.info("Starting prediction...")
+
+        images_yolo = [
+            img_tensor.permute(1, 2, 0).cpu().numpy() for img_tensor in images
+        ]
+
+        results = self.model.predict(  # type: ignore
+            source=images_yolo,
+            imgsz=self.img_size,
+            batch=len(images),
+            # --- Prediction parameters ---
+            conf=conf_threshold,
+            iou=iou_threshold,
+            max_det=max_detections,
+        )
+
+        all_detections: List[ADAPTER_PREDICTION] = []
+        for result in results:
+            prediction = ADAPTER_PREDICTION(
+                boxes=result.boxes.xyxy.cpu().numpy().tolist(),
+                scores=result.boxes.conf.cpu().numpy().tolist(),
+                labels=[
+                    result.names[int(label)]
+                    for label in result.boxes.cls.cpu().numpy().tolist()
+                ],
+            )
+
+            all_detections.append(prediction)
+
+        return all_detections
+
 
 @dataclass
 class RtdetrUltralyticsAdapter(UltralyticsAdapter):
@@ -294,3 +295,72 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
             project_dir=self.project_dir,
             name=self.name,
         )
+
+    def predict(
+        self,
+        images: List[torch.Tensor],
+        conf_threshold: float = 0.25,
+        iou_threshold: float = 0.45,
+        max_detections: int = 100,
+    ) -> List[ADAPTER_PREDICTION]:
+        logger.info("Starting prediction...")
+
+        images_yolo = [
+            img_tensor.permute(1, 2, 0).cpu().numpy() for img_tensor in images
+        ]
+
+        # NOTE: RTDETR does NOT support Non-Maximum Suppression (NMS) at inference time.
+        results = self.model.predict(  # type: ignore
+            source=images_yolo,
+            imgsz=self.img_size,
+            batch=len(images),
+            # --- Prediction parameters ---
+            conf=conf_threshold,
+            max_det=max_detections,
+        )
+
+        all_detections: List[ADAPTER_PREDICTION] = []
+        for result in results:
+
+            boxes = result.boxes.xyxy
+            scores = result.boxes.conf
+            labels = result.boxes.cls
+
+            if boxes.numel() == 0:
+                prediction = ADAPTER_PREDICTION(
+                    boxes=np.ndarray([]).tolist(),
+                    scores=np.ndarray([]).tolist(),
+                    labels=np.ndarray([]).tolist(),
+                )
+                all_detections.append(prediction)
+                continue
+
+            # --- Class-wise NMS ---
+            keep_indices = []
+            unique_labels = labels.unique()
+            for cls in unique_labels:
+                cls_mask = labels == cls
+                cls_keep = nms(boxes[cls_mask], scores[cls_mask], iou_threshold)
+                keep_indices.append(torch.nonzero(cls_mask, as_tuple=True)[0][cls_keep])
+
+            keep_indices = torch.cat(keep_indices)
+            if len(keep_indices) > max_detections:
+                # keep only top-k scores across all classes
+                topk = scores[keep_indices].topk(max_detections).indices
+                keep_indices = keep_indices[topk]
+
+            boxes = boxes[keep_indices]
+            scores = scores[keep_indices]
+            labels = labels[keep_indices]
+
+            prediction = ADAPTER_PREDICTION(
+                boxes=boxes.cpu().numpy().tolist(),
+                scores=scores.cpu().numpy().tolist(),
+                labels=[
+                    result.names[int(label)] for label in labels.cpu().numpy().tolist()
+                ],
+            )
+
+            all_detections.append(prediction)
+
+        return all_detections

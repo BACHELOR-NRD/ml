@@ -116,8 +116,8 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     def predict(
         self,
         images: List[torch.Tensor],
-        conf_threshold: float = 0.2,
-        iou_threshold: float = 0.4,
+        conf_threshold: float = 0.25,
+        iou_threshold: float = 0.45,
         max_detections: int = 100,
     ) -> List[ADAPTER_PREDICTION]:
         """
