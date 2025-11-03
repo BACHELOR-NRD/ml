@@ -22,6 +22,7 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_PREDICTION,
 )
 from ml_carbucks.utils.effdet_extension import (
+    CocoStatsEvaluator,
     ConcatDetectionDataset,
     create_dataset_custom,
 )
@@ -320,11 +321,17 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         return val_metrics
 
     def evaluate(
-        self, datasets: List[Tuple[str | Path, str | Path]]
+        self,
+        datasets: List[Tuple[str | Path, str | Path]],
+        include_default: bool = False,
     ) -> Dict[str, float]:
         self.model.eval()
 
         val_loader = self._create_loader(datasets, is_training=False)
+
+        default_evaluator = None
+        if include_default:
+            default_evaluator = CocoStatsEvaluator(dataset=val_loader.dataset)
 
         evaluator = MeanAveragePrecision(extended_summary=False, class_metrics=False)
         total_loss = 0.0
@@ -335,6 +342,11 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                 loss = output["loss"]
                 total_loss += loss.item()
 
+                if include_default and default_evaluator is not None:
+                    default_evaluator.add_predictions(
+                        detections=output["detections"], target=targets
+                    )
+
                 # NOTE:
                 # Annotations are loaded in yxyx format and they are scaled
                 # Predicitons are in xyxy format and not scaled (original size of the image)
@@ -342,9 +354,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                 # Predicitons have a lot of low confidence scores and ground_truths have a lot of -1 values that just indicate no object
                 # We need to filter them out
                 for i in range(len(imgs)):
-                    scale = (
-                        targets[i]["img_scale"] if "img_scale" in targets[i] else 1.0
-                    )
+                    scale = targets["img_scale"][i]
 
                     pred_mask = (
                         output["detections"][i][:, 4] >= self.confidence_threshold
@@ -365,7 +375,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                         gt_boxes = torch.zeros((0, 4), dtype=torch.float32)
                         gt_labels = torch.zeros((0,), dtype=torch.int64)
                     else:
-                        gt_boxes_yxyx_raw = targets["boxes"][i][gt_mask]
+                        gt_boxes_yxyx_raw = targets["bbox"][i][gt_mask]
                         gt_boxes_xyxy = torch.zeros_like(gt_boxes_yxyx_raw)
                         gt_boxes_xyxy[:, 0] = gt_boxes_yxyx_raw[:, 1]
                         gt_boxes_xyxy[:, 1] = gt_boxes_yxyx_raw[:, 0]
@@ -377,22 +387,31 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                     evaluator.update(
                         preds=[
                             {
-                                "boxes": pred_boxes,
-                                "scores": pred_scores,
-                                "labels": pred_labels,
+                                "boxes": pred_boxes.cpu(),
+                                "scores": pred_scores.cpu(),
+                                "labels": pred_labels.cpu(),
                             }
                         ],
                         target=[
                             {
-                                "boxes": gt_boxes,
-                                "labels": gt_labels,
+                                "boxes": gt_boxes.cpu(),
+                                "labels": gt_labels.cpu(),
                             }
                         ],
                     )
+
         results = evaluator.compute()
         metrics = {
             "map_50": results["map_50"].item(),
             "map_50_95": results["map"].item(),
         }
+        if include_default and default_evaluator is not None:
+            default_results = default_evaluator.evaluate()
+            metrics.update(
+                {
+                    "default_map_50_95": default_results[0],
+                    "default_map_50": default_results[1],
+                }
+            )
 
         return metrics
