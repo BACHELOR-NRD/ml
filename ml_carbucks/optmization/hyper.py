@@ -91,10 +91,10 @@ def execute_simple_study(
     # NOTE: the best model would have to be retrained so that it could be saved properly
     # model_path = adapter.save(result_dir_path)
     hyper_results = {
-        "best_params": json.dumps(best_trial.params),
+        "best_params": best_trial.params,
         "best_value": best_trial.value if is_single_objective else best_trial.values[0],
         # "model_path": model_path,
-        "classes": json.dumps(adapter.classes),
+        "classes": adapter.classes,
         "best_trial_number": best_trial.number,
         "study_name": name,
         "adapter": adapter.__class__.__name__,
@@ -190,39 +190,6 @@ def main(
     df.to_csv(results_dir / "optuna" / f"aggregated_hyper_{runtime}.csv", index=False)
 
 
-def debug():
-    train_datasets = [
-        (
-            DATA_DIR / "car_dd_testing" / "images" / "train",
-            DATA_DIR / "car_dd_testing" / "instances_train_curated.json",
-        )
-    ]
-    val_datasets = [
-        (
-            DATA_DIR / "car_dd_testing" / "images" / "val",
-            DATA_DIR / "car_dd_testing" / "instances_val_curated.json",
-        )
-    ]
-    model = FasterRcnnAdapter(classes=classes)
-    model.set_params(
-        {
-            "img_size": 640,
-            "batch_size": 16,
-            # "epochs": 1,
-            # "epochs": 30,
-            # "lr_backbone": 1.1418701765125965e-05,
-            # "lr_head": 0.009459099255432072,
-            # "weight_decay_backbone": 4.089517605333322e-06,
-            # "weight_decay_head": 0.0002135315334108973,
-        }
-    )
-    model.setup()
-
-    model.fit(datasets=train_datasets)  # type: ignore
-    metrics = model.evaluate(datasets=val_datasets)  # type: ignore
-    print("Metrics:", metrics)
-
-
 if __name__ == "__main__":
     classes = ["scratch", "dent", "crack"]
     main(
@@ -254,9 +221,8 @@ if __name__ == "__main__":
             )
         ],
         results_dir=RESULTS_DIR,
-        n_trials=30,
-        patience=10,
-        min_percentage_improvement=0.005,
-        optimization_timeout=6 * 3600,  # N hours
+        n_trials=50,
+        patience=25,
+        min_percentage_improvement=0.02,
+        optimization_timeout=12 * 3600,  # N hours
     )
-    # debug()

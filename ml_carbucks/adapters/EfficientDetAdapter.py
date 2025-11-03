@@ -61,11 +61,19 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             confidence_threshold=self.confidence_threshold,
         )
 
-    def _predict_preprocess_images_v2(self, images: List[torch.Tensor]):
+    def _preprocess_images(
+        self, images: List[torch.Tensor]
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         input_config = resolve_input_config(self.get_params(), self.model.config)
         fill_color = resolve_fill_color(
             input_config["fill_color"], input_config["mean"]
         )
+
+        mean = (
+            torch.tensor(input_config["mean"], device=self.device).view(3, 1, 1) * 255
+        )
+        std = torch.tensor(input_config["std"], device=self.device).view(3, 1, 1) * 255
+
         transform = Compose(
             [
                 ResizePad(
@@ -77,27 +85,39 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             ]
         )
 
-        batch_list = []
-        img_scaled = []
+        batch, scales = [], []
 
         for img in images:
-            if isinstance(img, torch.Tensor):
-                img = img.permute(1, 2, 0).cpu().numpy()  # [H,W,C]
-            img_pil = Image.fromarray(img.astype(np.uint8))
-            img_proc, anno = transform(img_pil, dict())  # no annotations
-            batch_list.append(img_proc)
-            img_scaled.append(anno.get("img_scale", 1.0))
 
-        batch_np = np.stack(batch_list, axis=0)  # [B,C,H,W]
-        batch_tensor = torch.from_numpy(batch_np).float().to(self.device)
+            img_np, anno = transform(
+                Image.fromarray(img.permute(1, 2, 0).cpu().numpy().astype(np.uint8)), {}
+            )
+            scales.append(anno.get("img_scale", 1.0))
 
-        return batch_tensor, img_scaled
+            img_norm = (
+                torch.from_numpy(img_np)
+                .to(self.device, non_blocking=True)
+                .float()
+                .sub_(mean)
+                .div_(std)
+            )
+            batch.append(img_norm)
+
+        batch_tensor = torch.stack(batch, dim=0)  # B,C,H,W
+        scales_tensor = torch.tensor(scales, dtype=torch.float32, device=self.device)
+        batch_original_sizes = torch.tensor(
+            [[img.shape[1], img.shape[2]] for img in images],
+            dtype=torch.float32,
+            device=self.device,
+        )
+
+        return batch_tensor, scales_tensor, batch_original_sizes
 
     def predict(
         self,
         images: List[torch.Tensor],
-        conf_threshold: float = 0.25,
-        iou_threshold: float = 0.45,
+        conf_threshold: float = 0.2,
+        iou_threshold: float = 0.4,
         max_detections: int = 100,
     ) -> List[ADAPTER_PREDICTION]:
         """
@@ -110,16 +130,14 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         predictions: List[ADAPTER_PREDICTION] = []
 
         with torch.no_grad():
-            img_sizes = torch.tensor(
-                [[img.shape[1], img.shape[2]] for img in images], dtype=torch.float32
-            ).to(self.device)
 
-            batch_tensor, batch_scales = self._predict_preprocess_images_v2(images)
+            batch_tensor, batch_scales, batch_original_sizes = self._preprocess_images(
+                images
+            )
 
-            img_scales = torch.tensor(batch_scales, dtype=torch.float32).to(self.device)
             img_info_dict = {
-                "img_scale": img_scales,
-                "img_size": img_sizes,
+                "img_scale": batch_scales,
+                "img_size": batch_original_sizes,
             }
 
             outputs = predictor(batch_tensor, img_info=img_info_dict)
