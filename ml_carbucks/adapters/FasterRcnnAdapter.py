@@ -46,8 +46,8 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     def predict(
         self,
         images: List[torch.Tensor],
-        conf_threshold: float = 0.25,
-        iou_threshold: float = 0.45,
+        conf_threshold: float = 0.20,
+        iou_threshold: float = 0.40,
         max_detections: int = 100,
     ) -> List[ADAPTER_PREDICTION]:
         self.model.eval()
