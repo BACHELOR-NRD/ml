@@ -21,6 +21,7 @@ def create_transforms(is_training: bool, img_size: int) -> A.Compose:
             min_width=img_size,
             border_mode=0,  # constant padding
             fill=(0, 0, 0),
+            position="top_left",
         ),
     ]
 
@@ -125,7 +126,8 @@ class COCODetectionWrapper(Dataset):
             labels = np.array(sample["labels"], dtype=np.int64)
         else:
             # If no transforms are applied, make sure that img is a np array with proper permutations
-            img = np.array(img, dtype=np.uint8).transpose(2, 0, 1)
+            # img = np.array(img, dtype=np.uint8).transpose(2, 0, 1)
+            pass
 
         # Convert COCO to VOC format
         if boxes_coco.shape[0] > 0:
@@ -156,19 +158,26 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
+def simple_transform() -> A.Compose:
+    return A.Compose([ToTensorV2()])
+
+
 def create_clean_loader(
     datasets: list[tuple[str | Path, str | Path]],
     shuffle: bool,
     batch_size: int,
     transforms: A.Compose | None,
 ) -> DataLoader:
+    """A function that creates a neat loader for image datasets.
+    If no transforms are provided, images will be loaded as np.arrays in format HWC with dtype uint8.
+    """
 
     all_datasets = []
     for img_folder, ann_file in datasets:
         ds = COCODetectionWrapper(
             img_folder=img_folder,
             ann_file=ann_file,
-            transforms=transforms or A.Compose([ToTensorV2()]),
+            transforms=transforms,
         )
         all_datasets.append(ds)
 

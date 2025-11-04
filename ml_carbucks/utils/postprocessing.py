@@ -1,8 +1,10 @@
 from typing import List, Literal, Optional
 
 import torch
-
+from torchvision.ops import nms
 from torch import Tensor
+
+from ml_carbucks.adapters.BaseDetectionAdapter import ADAPTER_PREDICTION
 
 # -------------------- IoU Computation --------------------
 
@@ -315,3 +317,49 @@ def merge_model_predictions(
         merged_results.append(merged)
 
     return merged_results
+
+
+def postprocess_prediction(
+    boxes: Tensor,
+    scores: Tensor,
+    labels: Tensor,
+    conf_threshold: float,
+    iou_threshold: float,
+    max_detections: int,
+) -> ADAPTER_PREDICTION:
+    # Apply confidence threshold
+    mask = scores >= conf_threshold
+    boxes, scores, labels = boxes[mask], scores[mask], labels[mask]
+
+    if boxes.numel() == 0:
+        return {
+            "boxes": torch.empty((0, 4)),
+            "scores": torch.empty((0,)),
+            "labels": torch.empty((0,)),
+        }
+
+    # Apply NMS
+    keep_indices = []
+    for cls in labels.unique():
+        cls_mask = labels == cls
+        cls_boxes = boxes[cls_mask]
+        cls_scores = scores[cls_mask]
+        cls_indices = nms(cls_boxes, cls_scores, iou_threshold)
+        # Map back to original indices
+        keep_indices.append(
+            torch.nonzero(cls_mask, as_tuple=False).squeeze(1)[cls_indices]
+        )
+
+    keep_indices = torch.cat(keep_indices)
+    sorted_idx = scores[keep_indices].argsort(descending=True)[:max_detections]
+    final_indices = keep_indices[sorted_idx]
+
+    final_boxes = boxes[final_indices].cpu()
+    final_scores = scores[final_indices].cpu()
+    final_labels = labels[final_indices].cpu().long()
+
+    return {
+        "boxes": final_boxes,
+        "scores": final_scores,
+        "labels": final_labels,
+    }
