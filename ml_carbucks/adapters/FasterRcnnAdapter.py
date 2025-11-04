@@ -13,13 +13,13 @@ from torchvision.models.detection.faster_rcnn import (
     FasterRCNN_ResNet50_FPN_Weights,
 )
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
-from torchvision.ops import nms
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_PREDICTION,
     BaseDetectionAdapter,
 )
 from ml_carbucks.utils.logger import setup_logger
+from ml_carbucks.utils.postprocessing import postprocess_prediction
 from ml_carbucks.utils.preprocessing import create_clean_loader, create_transforms
 from ml_carbucks.utils.result_saver import ResultSaver
 
@@ -46,72 +46,57 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         torch.save(self.model.state_dict(), save_path)
         return save_path
 
-    def predict(
-        self,
-        images: List[torch.Tensor],
-        conf_threshold: float = 0.25,
-        iou_threshold: float = 0.45,
-        max_detections: int = 100,
-    ) -> List[ADAPTER_PREDICTION]:
-        self.model.eval()
-        images_fasterrcnn = [img.to(self.device).float() for img in images]
+    def _preprocess_images(
+        self, images: List[np.ndarray]
+    ) -> Tuple[List[torch.Tensor], List[float]]:
+        transform = create_transforms(is_training=False, img_size=self.img_size)
 
-        if any(img.max() > 1.0 for img in images_fasterrcnn):
-            logger.debug("Normalizing images for Faster R-CNN inference...")
-            images_fasterrcnn = [img / 255.0 for img in images_fasterrcnn]
+        preprocessed_samples = [
+            transform(image=img, bboxes=[], labels=[]) for img in images
+        ]
+        preprocessed_images = [sample["image"] for sample in preprocessed_samples]
+
+        scales = [self.img_size / max(img.shape[0], img.shape[1]) for img in images]
+
+        return preprocessed_images, scales
+
+    def predict(self, images: List[np.ndarray]) -> List[ADAPTER_PREDICTION]:
+        self.model.eval()
+
+        preprocessed_images, scales = self._preprocess_images(images)
+
+        images_fasterrcnn = [img.to(self.device) for img in preprocessed_images]
 
         with torch.no_grad():
             outputs = self.model(images_fasterrcnn)
 
+        conf_threshold = -1
+        iou_threshold = -1
+        max_detections = -1
+
         processed_predictions: List[ADAPTER_PREDICTION] = []
-        for output in outputs:
-            boxes = output["boxes"]
+        for i, output in enumerate(outputs):
+            boxes = output["boxes"] / scales[i]
             scores = output["scores"]
             labels = output["labels"]
 
-            # Apply confidence threshold
-            mask = scores >= conf_threshold
-            boxes, scores, labels = boxes[mask], scores[mask], labels[mask]
-
-            if boxes.numel() == 0:
-                processed_predictions.append(
-                    {
-                        "boxes": np.ndarray([]).tolist(),
-                        "scores": np.ndarray([]).tolist(),
-                        "labels": np.ndarray([]).tolist(),
-                    }
+            if conf_threshold >= 0:
+                prediction = postprocess_prediction(
+                    boxes,
+                    scores,
+                    labels,
+                    conf_threshold,
+                    iou_threshold,
+                    max_detections,
                 )
-                continue
-
-            # Apply NMS
-            keep_indices = []
-            for cls in labels.unique():
-                cls_mask = labels == cls
-                cls_boxes = boxes[cls_mask]
-                cls_scores = scores[cls_mask]
-                cls_indices = nms(cls_boxes, cls_scores, iou_threshold)
-                # Map back to original indices
-                keep_indices.append(
-                    torch.nonzero(cls_mask, as_tuple=False).squeeze(1)[cls_indices]
-                )
-
-            keep_indices = torch.cat(keep_indices)
-            sorted_idx = scores[keep_indices].argsort(descending=True)[:max_detections]
-            final_indices = keep_indices[sorted_idx]
-
-            final_boxes = boxes[final_indices].cpu().numpy().tolist()
-            final_scores = scores[final_indices].cpu().numpy().tolist()
-            final_labels = [
-                self.classes[label - 1] for label in labels[final_indices].cpu().numpy()
-            ]
-
-            processed_predictions.append(
-                {
-                    "boxes": final_boxes,
-                    "scores": final_scores,
-                    "labels": final_labels,
+            else:
+                prediction: ADAPTER_PREDICTION = {
+                    "boxes": boxes.cpu(),
+                    "scores": scores.cpu(),
+                    "labels": labels.cpu().long(),
                 }
-            )
+
+            processed_predictions.append(prediction)
 
         return processed_predictions
 

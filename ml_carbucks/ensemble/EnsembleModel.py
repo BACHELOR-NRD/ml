@@ -3,12 +3,13 @@ from typing import Dict, List, Tuple
 from dataclasses import dataclass
 
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
+from tqdm import tqdm
 
 from ml_carbucks import DATA_DIR
 from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
-from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter
-from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter
-from ml_carbucks.adapters.UltralyticsAdapter import (
+from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter  # noqa: F401
+from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter  # noqa: F401
+from ml_carbucks.adapters.UltralyticsAdapter import (  # noqa: F401
     YoloUltralyticsAdapter,
     RtdetrUltralyticsAdapter,
 )
@@ -21,6 +22,7 @@ logger = setup_logger(__name__)
 
 @dataclass
 class EnsembleModel:
+    classes: List[str]
     adapters: List[BaseDetectionAdapter]
 
     def setup(self) -> "EnsembleModel":
@@ -48,8 +50,9 @@ class EnsembleModel:
         results = []
         for adapter_idx, adapter in enumerate(self.adapters):
             logger.info(f"Evaluating adapter: {adapter.__class__.__name__}")
-            for images, targets in loader:
+            for images, targets in tqdm(loader):
                 predictions = adapter.predict(images)
+
                 metrics[adapter_idx].update(predictions, targets)  # type: ignore
 
             metric = metrics[adapter_idx].compute()
@@ -84,33 +87,34 @@ class EnsembleModel:
 
 
 ensemble = EnsembleModel(
+    classes=["scratch", "dent", "crack"],
     adapters=[
-        YoloUltralyticsAdapter(
-            classes=["scratch", "dent", "crack"],
-            **{
-                "img_size": 384,
-                "batch_size": 32,
-                "epochs": 27,
-                "lr": 0.0015465639515144544,
-                "momentum": 0.3628781599889685,
-                "weight_decay": 0.0013127041660177367,
-                "optimizer": "NAdam",
-            },
-            weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_YoloUltralyticsAdaptermodel.pt",
-        ),
-        RtdetrUltralyticsAdapter(
-            classes=["scratch", "dent", "crack"],
-            **{
-                "img_size": 384,
-                "batch_size": 16,
-                "epochs": 10,
-                "lr": 0.0001141043015859849,
-                "momentum": 0.424704619626319,
-                "weight_decay": 0.00012292547851740234,
-                "optimizer": "AdamW",
-            },
-            weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_RtdetrUltralyticsAdaptermodel.pt",
-        ),
+        # YoloUltralyticsAdapter(
+        #     classes=["scratch", "dent", "crack"],
+        #     **{
+        #         "img_size": 384,
+        #         "batch_size": 32,
+        #         "epochs": 27,
+        #         "lr": 0.0015465639515144544,
+        #         "momentum": 0.3628781599889685,
+        #         "weight_decay": 0.0013127041660177367,
+        #         "optimizer": "NAdam",
+        #     },
+        #     weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_YoloUltralyticsAdaptermodel.pt",
+        # ),
+        # RtdetrUltralyticsAdapter(
+        #     classes=["scratch", "dent", "crack"],
+        #     **{
+        #         "img_size": 384,
+        #         "batch_size": 16,
+        #         "epochs": 10,
+        #         "lr": 0.0001141043015859849,
+        #         "momentum": 0.424704619626319,
+        #         "weight_decay": 0.00012292547851740234,
+        #         "optimizer": "AdamW",
+        #     },
+        #     weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_RtdetrUltralyticsAdaptermodel.pt",
+        # ),
         FasterRcnnAdapter(
             classes=["scratch", "dent", "crack"],
             **{
@@ -124,19 +128,19 @@ ensemble = EnsembleModel(
             },
             weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_FasterRcnnAdaptermodel.pth",
         ),
-        EfficientDetAdapter(
-            classes=["scratch", "dent", "crack"],
-            **{
-                "img_size": 384,
-                "batch_size": 8,
-                "epochs": 26,
-                "optimizer": "momentum",
-                "lr": 0.003459928723120903,
-                "weight_decay": 0.0001302610542371722,
-            },
-            weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_EfficientDetAdaptermodel.pth",
-        ),
-    ]
+        # EfficientDetAdapter(
+        #     classes=["scratch", "dent", "crack"],
+        #     **{
+        #         "img_size": 384,
+        #         "batch_size": 8,
+        #         "epochs": 26,
+        #         "optimizer": "momentum",
+        #         "lr": 0.003459928723120903,
+        #         "weight_decay": 0.0001302610542371722,
+        #     },
+        #     weights="/home/bachelor/ml-carbucks/results/ensemble_demos/trial_4_EfficientDetAdaptermodel.pth",
+        # ),
+    ],
 ).setup()
 
 train_datasets = [
@@ -158,6 +162,13 @@ def test_1():
     metrics = ensemble.evaluate_adapters_by_evaluation_from_dataset(val_datasets)  # type: ignore
     for idx, adapter in enumerate(ensemble.adapters):
         logger.info(f"Adapter: {adapter.__class__.__name__}, Metrics: {metrics[idx]}")
+
+    """
+    INFO __main__ 17:13:01 | Adapter: YoloUltralyticsAdapter, Metrics: {'map_50': 0.37547850015394535, 'map_50_95': 0.19936537404157367}
+    INFO __main__ 17:13:01 | Adapter: RtdetrUltralyticsAdapter, Metrics: {'map_50': 0.49289777293378106, 'map_50_95': 0.27581342862762825}
+    INFO __main__ 17:13:01 | Adapter: FasterRcnnAdapter, Metrics: {'map_50': 0.1564657837152481, 'map_50_95': 0.05529939383268356}
+    INFO __main__ 17:13:01 | Adapter: EfficientDetAdapter, Metrics: {'map_50': 0.3597193956375122, 'map_50_95': 0.16730839014053345}
+    """
 
     return metrics
 
@@ -181,5 +192,5 @@ def test_3(m1, m2, metric_name: str):
 
 if __name__ == "__main__":
     # m1 = test_1()
-    # m2 = test_2()
+    m2 = test_2()
     # test_3(m1, m2, "map_50_95")

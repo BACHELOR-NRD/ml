@@ -2,8 +2,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, TypedDict
 from dataclasses import dataclass, field
+import numpy as np
 
-from numpy.typing import NDArray
 import torch
 
 from ml_carbucks.utils.logger import setup_logger
@@ -21,9 +21,9 @@ class ADAPTER_PREDICTION(TypedDict):
         - `image_ids` can be used when batching predictions from multiple images.
     """
 
-    boxes: NDArray
-    scores: NDArray
-    labels: List[str]
+    boxes: torch.Tensor
+    scores: torch.Tensor
+    labels: torch.Tensor
 
 
 @dataclass
@@ -62,13 +62,7 @@ class BaseDetectionAdapter(ABC):
         pass
 
     @abstractmethod
-    def predict(
-        self,
-        images: List[torch.Tensor],
-        conf_threshold: float = 0.25,
-        iou_threshold: float = 0.45,
-        max_detections: int = 100,
-    ) -> List[ADAPTER_PREDICTION]:
+    def predict(self, images: List[np.ndarray]) -> List[ADAPTER_PREDICTION]:
         """
         Run full inference pipeline on a single image (or batch if desired).
         Must return standardized detections:
