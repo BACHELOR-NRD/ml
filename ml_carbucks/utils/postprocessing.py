@@ -327,6 +327,17 @@ def postprocess_prediction(
     iou_threshold: float,
     max_detections: int,
 ) -> ADAPTER_PREDICTION:
+    """
+    A function that postprocesses model predictions by:
+     - applying confidence thresholding
+     - applying non-maximum suppression (NMS)
+     - limiting the number of detections to max_detections
+
+    If confidence threshold is less than or equal to 0, no thresholding is applied.
+    If IoU threshold is less than or equal to 0, NMS is skipped.
+    If max_detections is less than or equal to 0, all detections are kept after thresholding/NMS.
+    """
+
     # Apply confidence threshold
     mask = scores >= conf_threshold
     boxes, scores, labels = boxes[mask], scores[mask], labels[mask]
@@ -335,10 +346,29 @@ def postprocess_prediction(
         return {
             "boxes": torch.empty((0, 4)),
             "scores": torch.empty((0,)),
-            "labels": torch.empty((0,)),
+            "labels": torch.empty((0,)).long(),
         }
 
-    # Apply NMS
+    if max_detections <= 0:
+        max_detections = boxes.shape[0]
+    else:
+        max_detections = min(max_detections, boxes.shape[0])
+
+    if iou_threshold <= 0:
+        # No NMS, just limit to max_detections
+
+        topk_indices = scores.topk(max_detections).indices
+        top_boxes = boxes[topk_indices]
+        top_scores = scores[topk_indices]
+        top_labels = labels[topk_indices]
+
+        return {
+            "boxes": top_boxes.cpu(),
+            "scores": top_scores.cpu(),
+            "labels": top_labels.cpu().long(),
+        }
+
+    # Apply NMS per class
     keep_indices = []
     for cls in labels.unique():
         cls_mask = labels == cls
