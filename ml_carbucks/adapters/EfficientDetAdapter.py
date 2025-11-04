@@ -21,7 +21,7 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
     BaseDetectionAdapter,
     ADAPTER_PREDICTION,
 )
-from ml_carbucks.utils.effdet_extension import (
+from ml_carbucks.patches.effdet import (
     CocoStatsEvaluator,
     ConcatDetectionDataset,
     create_dataset_custom,
@@ -52,7 +52,6 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     def _preprocess_images(
         self, images: List[np.ndarray]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-
         input_config = resolve_input_config(self.get_params(), self.model.config)
         fill_color = resolve_fill_color(
             input_config["fill_color"], input_config["mean"]
@@ -103,8 +102,8 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     def predict(
         self,
         images: List[np.ndarray],
-        conf_threshold: float = -1.0,
-        iou_threshold: float = -1.0,
+        conf_threshold: float = 0.15,
+        iou_threshold: float = 1.0,
         max_detections: int = 10,
     ) -> List[ADAPTER_PREDICTION]:
         """
@@ -130,7 +129,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
             outputs = predictor(batch_tensor, img_info=img_info_dict)
 
-            for pred in outputs:
+            for i, pred in enumerate(outputs):
                 boxes = pred[:, :4]
                 scores = pred[:, 4]
                 labels_idx = pred[:, 5]
