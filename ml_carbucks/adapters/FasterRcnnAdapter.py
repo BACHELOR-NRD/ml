@@ -60,7 +60,13 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         return preprocessed_images, scales
 
-    def predict(self, images: List[np.ndarray]) -> List[ADAPTER_PREDICTION]:
+    def predict(
+        self,
+        images: List[np.ndarray],
+        conf_threshold: float = -1.0,
+        iou_threshold: float = -1.0,
+        max_detections: int = 10,
+    ) -> List[ADAPTER_PREDICTION]:
         self.model.eval()
 
         preprocessed_images, scales = self._preprocess_images(images)
@@ -70,31 +76,20 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         with torch.no_grad():
             outputs = self.model(images_fasterrcnn)
 
-        conf_threshold = -1
-        iou_threshold = -1
-        max_detections = -1
-
         processed_predictions: List[ADAPTER_PREDICTION] = []
         for i, output in enumerate(outputs):
             boxes = output["boxes"] / scales[i]
             scores = output["scores"]
             labels = output["labels"]
 
-            if conf_threshold >= 0:
-                prediction = postprocess_prediction(
-                    boxes,
-                    scores,
-                    labels,
-                    conf_threshold,
-                    iou_threshold,
-                    max_detections,
-                )
-            else:
-                prediction: ADAPTER_PREDICTION = {
-                    "boxes": boxes.cpu(),
-                    "scores": scores.cpu(),
-                    "labels": labels.cpu().long(),
-                }
+            prediction = postprocess_prediction(
+                boxes,
+                scores,
+                labels,
+                conf_threshold,
+                iou_threshold,
+                max_detections,
+            )
 
             processed_predictions.append(prediction)
 

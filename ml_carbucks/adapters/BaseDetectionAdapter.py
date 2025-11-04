@@ -62,7 +62,13 @@ class BaseDetectionAdapter(ABC):
         pass
 
     @abstractmethod
-    def predict(self, images: List[np.ndarray]) -> List[ADAPTER_PREDICTION]:
+    def predict(
+        self,
+        images: List[np.ndarray],
+        conf_threshold: float = -1.0,
+        iou_threshold: float = -1.0,
+        max_detections: int = 10,
+    ) -> List[ADAPTER_PREDICTION]:
         """
         Run full inference pipeline on a single image (or batch if desired).
         Must return standardized detections:

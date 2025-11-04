@@ -8,7 +8,6 @@ import numpy as np
 from tqdm import tqdm
 from PIL import Image
 from torch.utils.data.dataloader import DataLoader
-from torchvision.ops import nms
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from effdet import create_model, create_loader
 from effdet.data import resolve_input_config, resolve_fill_color
@@ -16,6 +15,7 @@ from effdet.bench import DetBenchPredict  # noqa F401
 from effdet.data.transforms import ResizePad, ImageToNumpy, Compose
 from timm.optim._optim_factory import create_optimizer_v2
 
+from ml_carbucks.utils.postprocessing import postprocess_prediction
 from ml_carbucks.utils.result_saver import ResultSaver
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     BaseDetectionAdapter,
@@ -50,8 +50,9 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         return save_path
 
     def _preprocess_images(
-        self, images: List[torch.Tensor]
+        self, images: List[np.ndarray]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+
         input_config = resolve_input_config(self.get_params(), self.model.config)
         fill_color = resolve_fill_color(
             input_config["fill_color"], input_config["mean"]
@@ -77,9 +78,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         for img in images:
 
-            img_np, anno = transform(
-                Image.fromarray(img.permute(1, 2, 0).cpu().numpy().astype(np.uint8)), {}
-            )
+            img_np, anno = transform(Image.fromarray(img), {})
             scales.append(anno.get("img_scale", 1.0))
 
             img_norm = (
@@ -94,7 +93,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         batch_tensor = torch.stack(batch, dim=0)  # B,C,H,W
         scales_tensor = torch.tensor(scales, dtype=torch.float32, device=self.device)
         batch_original_sizes = torch.tensor(
-            [[img.shape[1], img.shape[2]] for img in images],
+            [[img.shape[1], img.shape[0]] for img in images],
             dtype=torch.float32,
             device=self.device,
         )
@@ -103,10 +102,10 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
     def predict(
         self,
-        images: List[torch.Tensor],
-        conf_threshold: float = 0.25,
-        iou_threshold: float = 0.45,
-        max_detections: int = 100,
+        images: List[np.ndarray],
+        conf_threshold: float = -1.0,
+        iou_threshold: float = -1.0,
+        max_detections: int = 10,
     ) -> List[ADAPTER_PREDICTION]:
         """
         The issue is that predicitons are weird but the results of the evaluation
@@ -123,6 +122,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                 images
             )
 
+            # NOTE: Passing the img_info dict will allow to get the predictions in original image scale
             img_info_dict = {
                 "img_scale": batch_scales,
                 "img_size": batch_original_sizes,
@@ -130,26 +130,21 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
             outputs = predictor(batch_tensor, img_info=img_info_dict)
 
-            for i, pred in enumerate(outputs):
-                mask = pred[:, 4] >= conf_threshold
-                if mask.sum() == 0:
-                    boxes = np.zeros((0, 4), dtype=np.float32)
-                    scores = np.zeros((0,), dtype=np.float32)
-                    labels = []
-                else:
-                    boxes = pred[mask, :4]
-                    scores = pred[mask, 4]
-                    labels_idx = pred[mask, 5].long()
+            for pred in outputs:
+                boxes = pred[:, :4]
+                scores = pred[:, 4]
+                labels_idx = pred[:, 5]
 
-                    # apply NMS per image
-                    keep = nms(boxes, scores, iou_threshold)
-                    keep = keep[:max_detections]  # take top-k
+                prediction = postprocess_prediction(
+                    boxes,
+                    scores,
+                    labels_idx,
+                    conf_threshold,
+                    iou_threshold,
+                    max_detections,
+                )
 
-                    boxes = boxes[keep].cpu().numpy().copy()
-
-                    scores = scores[keep].cpu().numpy()
-                    labels = [self.classes[idx - 1] for idx in labels_idx[keep]]
-                predictions.append({"boxes": boxes, "scores": scores, "labels": labels})
+                predictions.append(prediction)
 
         return predictions
 
