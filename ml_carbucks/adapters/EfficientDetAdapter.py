@@ -49,20 +49,6 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         torch.save(self.model.model.state_dict(), save_path)
         return save_path
 
-    def clone(self) -> "EfficientDetAdapter":
-        return EfficientDetAdapter(
-            classes=deepcopy(self.classes),
-            weights=self.weights,
-            img_size=self.img_size,
-            batch_size=self.batch_size,
-            epochs=self.epochs,
-            backbone=self.backbone,
-            optimizer=self.optimizer,
-            lr=self.lr,
-            weight_decay=self.weight_decay,
-            confidence_threshold=self.confidence_threshold,
-        )
-
     def _preprocess_images(
         self, images: List[torch.Tensor]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

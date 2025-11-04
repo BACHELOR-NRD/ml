@@ -82,11 +82,6 @@ class BaseDetectionAdapter(ABC):
         pass
 
     @abstractmethod
-    def clone(self) -> "BaseDetectionAdapter":
-        """Create a new adapter instance."""
-        pass
-
-    @abstractmethod
     def debug(
         self,
         train_datasets: List[Tuple[str | Path, str | Path]],
@@ -124,3 +119,8 @@ class BaseDetectionAdapter(ABC):
             for key, value in self.__dict__.items()
             if key not in ["model", "device"]
         }
+
+    def clone(self) -> "BaseDetectionAdapter":
+        """Create a new adapter instance with the same parameters."""
+        cls = self.__class__
+        return cls(**self.get_params())
