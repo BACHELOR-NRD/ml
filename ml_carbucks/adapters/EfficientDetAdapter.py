@@ -39,8 +39,9 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
     optimizer: str = "momentum"
     lr: float = 8e-3
-    weight_decay: float = 5e-5
-    confidence_threshold: float = 0.2
+    weight_decay: float = 9e-6
+    confidence_threshold: float = 0.15
+    training_augmentations: bool = True
 
     def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model{suffix}.pth"
@@ -243,12 +244,17 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         concat_dataset = ConcatDetectionDataset(all_datasets)
 
+        if is_training and (not self.training_augmentations):
+            logger.warning(
+                "Data augmentations are disabled. This may worsen model performance. It should only be used for debugging purposes."
+            )
+
         input_config = resolve_input_config(self.get_params(), self.model.config)
         loader = create_loader(
             concat_dataset,
             input_size=input_config["input_size"],
             batch_size=batch_size,
-            is_training=is_training,
+            is_training=is_training and self.training_augmentations,
             use_prefetcher=True,
             interpolation=input_config["interpolation"],
             fill_color=input_config["fill_color"],

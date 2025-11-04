@@ -1,6 +1,7 @@
 from copy import deepcopy
 import time
 import json
+from typing_extensions import Literal
 import numpy as np
 import yaml
 from pathlib import Path
@@ -24,16 +25,20 @@ logger = setup_logger(__name__)
 @dataclass
 class UltralyticsAdapter(BaseDetectionAdapter):
 
-    optimizer: str = "AdamW"
+    optimizer: Literal["SGD", "Adam", "AdamW", "NAdam", "RAdam", "RMSProp", "auto"] = (
+        "auto"
+    )
     lr: float = 1e-3
     momentum: float = 0.9
-    weight_decay: float = 1e-4
+    weight_decay: float = 5e-4
 
     seed: int = 42
     training_save: bool = True
     verbose: bool = False
     project_dir: str | Path | None = None
     name: str | None = None
+
+    training_augmentations: bool = True
 
     def fit(
         self, datasets: List[Tuple[str | Path, str | Path]]
@@ -50,6 +55,30 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         logger.info("Converting COCO annotations to YOLO format...")
         data_yaml = self.coco_to_yolo(str(img_dir), str(ann_file))
         logger.info(f"YOLO dataset YAML created at: {data_yaml}")
+
+        extra_params = dict()
+        if not self.training_augmentations:
+            logger.warning(
+                "Data augmentations are disabled. This may worsen model performance. It should only be used for debugging purposes."
+            )
+            extra_params.update(
+                {
+                    "hsv_h": 0.0,
+                    "hsv_s": 0.0,
+                    "hsv_v": 0.0,
+                    "translate": 0.0,
+                    "scale": 0.0,
+                    "shear": 0.0,
+                    "perspective": 0.0,
+                    "flipud": False,
+                    "fliplr": 0.0,
+                    "mosaic": 0.0,
+                    "mixup": 0.0,
+                    "erasing": 0.0,
+                    "auto_augment": None,
+                    "augment": False,
+                }
+            )
 
         self.model.train(  # type: ignore
             # --- Core parameters ---
@@ -68,6 +97,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             momentum=self.momentum,
             weight_decay=self.weight_decay,
             optimizer=self.optimizer,
+            **extra_params,
         )
 
         return self
