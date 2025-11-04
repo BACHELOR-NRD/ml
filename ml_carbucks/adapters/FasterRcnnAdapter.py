@@ -1,4 +1,3 @@
-from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Literal, Optional, Tuple
@@ -305,16 +304,3 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         }
 
         return metrics
-
-    def clone(self) -> "FasterRcnnAdapter":
-        return FasterRcnnAdapter(
-            classes=deepcopy(self.classes),
-            weights=self.weights,
-            img_size=self.img_size,
-            batch_size=self.batch_size,
-            epochs=self.epochs,
-            lr_backbone=self.lr_backbone,
-            lr_head=self.lr_head,
-            weight_decay_backbone=self.weight_decay_backbone,
-            weight_decay_head=self.weight_decay_head,
-        )

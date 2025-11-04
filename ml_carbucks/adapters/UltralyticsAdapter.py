@@ -1,4 +1,3 @@
-from copy import deepcopy
 import time
 import json
 from typing_extensions import Literal
@@ -240,24 +239,6 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
 
         return self
 
-    def clone(self) -> "YoloUltralyticsAdapter":
-        return YoloUltralyticsAdapter(
-            classes=deepcopy(self.classes),
-            weights=self.weights,
-            img_size=self.img_size,
-            batch_size=self.batch_size,
-            epochs=self.epochs,
-            optimizer=self.optimizer,
-            lr=self.lr,
-            momentum=self.momentum,
-            weight_decay=self.weight_decay,
-            seed=self.seed,
-            training_save=self.training_save,
-            verbose=self.verbose,
-            project_dir=self.project_dir,
-            name=self.name,
-        )
-
     def predict(
         self,
         images: List[torch.Tensor],
@@ -307,24 +288,6 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
         self.model.to(self.device)
 
         return self
-
-    def clone(self) -> "RtdetrUltralyticsAdapter":
-        return RtdetrUltralyticsAdapter(
-            classes=deepcopy(self.classes),
-            weights=self.weights,
-            img_size=self.img_size,
-            batch_size=self.batch_size,
-            epochs=self.epochs,
-            optimizer=self.optimizer,
-            lr=self.lr,
-            momentum=self.momentum,
-            weight_decay=self.weight_decay,
-            seed=self.seed,
-            training_save=self.training_save,
-            verbose=self.verbose,
-            project_dir=self.project_dir,
-            name=self.name,
-        )
 
     def predict(
         self,
