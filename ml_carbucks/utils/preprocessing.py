@@ -81,6 +81,10 @@ def create_transforms(is_training: bool, img_size: int) -> A.Compose:
     return custom_transform
 
 
+def simple_transform() -> A.Compose:
+    return A.Compose([ToTensorV2()])
+
+
 class COCODetectionWrapper(Dataset):
     def __init__(self, img_folder, ann_file, transforms=None):
         self.dataset = CocoDetection(img_folder, ann_file)
@@ -98,8 +102,8 @@ class COCODetectionWrapper(Dataset):
             label_increment = 1  # +1 because 0 = background
 
         self.cat_id_to_label = {
-            cat["id"]: idx + label_increment  # adding increment if needed
-            for idx, cat in enumerate(self.dataset.coco.cats.values())
+            cat["id"]: cat["id"] + label_increment
+            for _, cat in enumerate(self.dataset.coco.cats.values())
         }
 
     def __getitem__(self, idx):
@@ -156,10 +160,6 @@ class COCODetectionWrapper(Dataset):
 
 def collate_fn(batch):
     return tuple(zip(*batch))
-
-
-def simple_transform() -> A.Compose:
-    return A.Compose([ToTensorV2()])
 
 
 def create_clean_loader(

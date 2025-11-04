@@ -65,8 +65,8 @@ class BaseDetectionAdapter(ABC):
     def predict(
         self,
         images: List[np.ndarray],
-        conf_threshold: float = -1.0,
-        iou_threshold: float = -1.0,
+        conf_threshold: float = 0.0,
+        iou_threshold: float = 1.0,
         max_detections: int = 10,
     ) -> List[ADAPTER_PREDICTION]:
         """

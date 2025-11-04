@@ -22,8 +22,8 @@ def datasets_and_classes() -> Tuple[
 
     demo_datasets = [
         (
-            TEST_DIR / "data" / "images" / "demo",
-            TEST_DIR / "data" / "instances_demo_singular_curated.json",
+            TEST_DIR / "mock" / "images" / "demo",
+            TEST_DIR / "mock" / "instances_demo_singular_curated.json",
         )
     ]
     demo_classes = ["scratch", "dent"]
@@ -61,7 +61,7 @@ def test_adapter_can_overfit(
     It is to make sure that the model and training loop are implemented correctly.
     """
 
-    SCORE_THRESHOLD = 0.3
+    SCORE_THRESHOLD = 0.5
     train_datasets, val_datasets, classes = datasets_and_classes
     adapter = adapter_class(classes=classes)  # type: ignore
 

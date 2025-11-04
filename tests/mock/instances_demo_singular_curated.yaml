@@ -1,0 +1,6 @@
+train: /home/bachelor/ml-carbucks/tests/mock/images/demo
+val: /home/bachelor/ml-carbucks/tests/mock/images/demo
+nc: 2
+names:
+  0: scratch
+  1: dent
