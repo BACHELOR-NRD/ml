@@ -1,0 +1,80 @@
+{
+    "images": [
+        {
+            "id": 3,
+            "file_name": "000835.jpg",
+            "width": 1000,
+            "height": 667
+        }
+    ],
+    "annotations": [
+        {
+            "id": 2,
+            "image_id": 3,
+            "category_id": 2,
+            "bbox": [
+                271.57000000000005,
+                91.7497853,
+                49.99,
+                51.709975400000005
+            ],
+            "area": 2584.9816702460002,
+            "iscrowd": 0
+        },
+        {
+            "id": 3,
+            "image_id": 3,
+            "category_id": 1,
+            "bbox": [
+                126.44,
+                160.86972799999998,
+                185.21,
+                287.31025
+            ],
+            "area": 53212.7314025,
+            "iscrowd": 0
+        },
+        {
+            "id": 4,
+            "image_id": 3,
+            "category_id": 1,
+            "bbox": [
+                213.78,
+                518.7802604999999,
+                134.43,
+                94.679983
+            ],
+            "area": 12727.83011469,
+            "iscrowd": 0
+        },
+        {
+            "id": 5,
+            "image_id": 3,
+            "category_id": 1,
+            "bbox": [
+                335.20000000000005,
+                216.66974739999998,
+                233.45,
+                49.8699892
+            ],
+            "area": 11642.148978739999,
+            "iscrowd": 0
+        }
+    ],
+    "categories": [
+        {
+            "id": 1,
+            "name": "scratch"
+        },
+        {
+            "id": 2,
+            "name": "dent"
+        }
+    ],
+    "info": {
+        "description": "Damage Detection Dataset Validation",
+        "version": "1.0",
+        "year": 2023,
+        "contributor": "Wang, Xinkuand and Li, Wenjing and Wu, Zhongcheng"
+    }
+}

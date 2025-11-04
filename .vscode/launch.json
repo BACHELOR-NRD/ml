@@ -53,6 +53,14 @@
             "program": "${workspaceFolder}/ml_carbucks/ensemble/EnsembleModel.py",
             "console": "internalConsole",
             "justMyCode": false
+        },
+        {
+            "name": "Pytest",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["-v", "-s", "./tests"],
+            "console": "internalConsole",
         }
 
     ]

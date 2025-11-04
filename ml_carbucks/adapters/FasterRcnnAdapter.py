@@ -1,7 +1,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 import torch
@@ -36,6 +36,10 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     lr_head: float = 5e-4
     weight_decay_backbone: float = 1e-5
     weight_decay_head: float = 1e-4
+    optimizer: Literal["Adam", "AdamW", "RAdam", "SGD"] = "Adam"
+    clip_gradients: Optional[float] = None
+    training_augmentations: bool = True
+    momentum: float = 0.9  # Used for SGD and RMSprop
 
     def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model{suffix}.pth"
@@ -164,7 +168,18 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             {"params": head_params, "lr": lr2, "weight_decay": weight_decay2},
         ]
 
-        return torch.optim.AdamW(params)
+        if self.optimizer == "AdamW":
+            optimizer = torch.optim.AdamW(params)
+        elif self.optimizer == "RAdam":
+            optimizer = torch.optim.RAdam(params)
+        elif self.optimizer == "Adam":
+            optimizer = torch.optim.Adam(params)
+        elif self.optimizer == "SGD":
+            optimizer = torch.optim.SGD(params, momentum=self.momentum)
+        else:
+            raise ValueError(f"Unsupported optimizer: {self.optimizer}")
+
+        return optimizer
 
     def _create_loader(
         self, datasets: List[Tuple[str | Path, str | Path]], is_training: bool
@@ -172,11 +187,19 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         batch_size = self.batch_size
         img_size = self.img_size
 
+        if is_training and (not self.training_augmentations):
+            logger.warning(
+                "Data augmentations are disabled. This may worsen model performance. It should only be used for debugging purposes."
+            )
+
         return create_clean_loader(
             datasets,
-            shuffle=is_training,
+            shuffle=is_training and self.training_augmentations,
             batch_size=batch_size,
-            transforms=create_transforms(is_training=is_training, img_size=img_size),
+            transforms=create_transforms(
+                is_training=is_training and self.training_augmentations,
+                img_size=img_size,
+            ),
         )
 
     def fit(self, datasets: List[Tuple[str | Path, str | Path]]) -> "FasterRcnnAdapter":
@@ -214,7 +237,9 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             loss.backward()  # type: ignore
 
             # NOTE: Clipping gradients to avoid exploding gradients
-            clip_grad_norm_(self.model.parameters(), max_norm=5.0)
+            if self.clip_gradients is not None:
+                clip_grad_norm_(self.model.parameters(), max_norm=self.clip_gradients)
+
             optimizer.step()
 
             total_loss += loss.item()  # type: ignore
