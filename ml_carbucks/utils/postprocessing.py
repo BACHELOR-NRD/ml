@@ -16,72 +16,89 @@ def postprocess_prediction(
     iou_threshold: float,
     max_detections: int,
 ) -> ADAPTER_PREDICTION:
-    """
-    A function that postprocesses model predictions by:
-     - applying confidence thresholding
-     - applying non-maximum suppression (NMS)
-     - limiting the number of detections to max_detections
 
-    If confidence threshold <= 0, no thresholding is applied.
-    If IoU threshold is out of range (0, 1), NMS is skipped.
-    If max_detections is less than or equal to 0, all detections are kept after thresholding/NMS.
-    """
+    device = boxes.device
+    boxes = boxes.to(device)
+    scores = scores.to(device)
+    labels = labels.to(device)
 
-    # Apply confidence threshold
-    mask = scores >= conf_threshold
-    boxes, scores, labels = boxes[mask], scores[mask], labels[mask]
-
-    if boxes.numel() == 0:
+    if boxes.numel() == 0 or scores.numel() == 0 or labels.numel() == 0:
         return {
             "boxes": torch.empty((0, 4)),
             "scores": torch.empty((0,)),
-            "labels": torch.empty((0,)).long(),
+            "labels": torch.empty((0,), dtype=torch.long),
         }
 
-    if max_detections <= 0:
-        max_detections = boxes.shape[0]
-    else:
-        max_detections = min(max_detections, boxes.shape[0])
+    if conf_threshold is not None and conf_threshold > 0:
+        keep_mask = scores >= float(conf_threshold)
+        if keep_mask.sum().item() == 0:
+            return {
+                "boxes": torch.empty((0, 4)),
+                "scores": torch.empty((0,)),
+                "labels": torch.empty((0,), dtype=torch.long),
+            }
+        boxes = boxes[keep_mask]
+        scores = scores[keep_mask]
+        labels = labels[keep_mask]
 
-    if iou_threshold <= 0 or iou_threshold >= 1.0:
-        # No NMS, just limit to max_detections
+    if max_detections is None:
+        max_detections = 0
+    if not isinstance(max_detections, int):
+        try:
+            max_detections = int(max_detections)
+        except Exception:
+            raise ValueError("max_detections must be an integer or None")
 
-        topk_indices = scores.topk(max_detections).indices
-        top_boxes = boxes[topk_indices]
-        top_scores = scores[topk_indices]
-        top_labels = labels[topk_indices]
-
+    # If no NMS requested (iou out of (0,1) range), just select top-K by score
+    if not (0.0 < float(iou_threshold) < 1.0):
+        if max_detections <= 0:
+            # return all (already on CPU)
+            order = scores.argsort(descending=True)
+        else:
+            order = scores.argsort(descending=True)[:max_detections]
         return {
-            "boxes": top_boxes.cpu(),
-            "scores": top_scores.cpu(),
-            "labels": top_labels.cpu().long(),
+            "boxes": boxes[order].clone().detach(),
+            "scores": scores[order].clone().detach(),
+            "labels": labels[order].clone().detach().long(),
         }
 
-    # Apply NMS per class
-    keep_indices = []
-    for cls in labels.unique():
+    # Per-class NMS
+    keep_indices_list = []
+    unique_labels = torch.unique(labels)
+    for cls in unique_labels:
         cls_mask = labels == cls
+        if cls_mask.sum() == 0:
+            continue
         cls_boxes = boxes[cls_mask]
         cls_scores = scores[cls_mask]
-        cls_indices = nms(cls_boxes, cls_scores, iou_threshold)
-        # Map back to original indices
-        keep_indices.append(
-            torch.nonzero(cls_mask, as_tuple=False).squeeze(1)[cls_indices]
-        )
+        # nms expects tensors on same device (we're on CPU), and returns indices relative to cls_boxes
+        cls_keep = nms(cls_boxes, cls_scores, float(iou_threshold))
+        if cls_keep.numel() == 0:
+            continue
+        # Map class-local indices back to global indices
+        global_indices = torch.nonzero(cls_mask, as_tuple=False).squeeze(1)
+        keep_indices_list.append(global_indices[cls_keep])
 
-    keep_indices = torch.cat(keep_indices)
-    sorted_idx = scores[keep_indices].argsort(descending=True)[:max_detections]
-    final_indices = keep_indices[sorted_idx]
+    if len(keep_indices_list) == 0:
+        return {
+            "boxes": torch.empty((0, 4)),
+            "scores": torch.empty((0,)),
+            "labels": torch.empty((0,), dtype=torch.long),
+        }
 
-    final_boxes = boxes[final_indices].cpu()
-    final_scores = scores[final_indices].cpu()
-    final_labels = labels[final_indices].cpu().long()
+    keep_indices = torch.cat(keep_indices_list)
 
-    return {
-        "boxes": final_boxes,
-        "scores": final_scores,
-        "labels": final_labels,
-    }
+    # Sort kept boxes by descending score and enforce max_detections
+    sorted_by_score = scores[keep_indices].argsort(descending=True)
+    if max_detections > 0:
+        sorted_by_score = sorted_by_score[:max_detections]
+    final_indices = keep_indices[sorted_by_score]
+
+    final_boxes = boxes[final_indices].clone().detach()
+    final_scores = scores[final_indices].clone().detach()
+    final_labels = labels[final_indices].clone().detach().long()
+
+    return {"boxes": final_boxes, "scores": final_scores, "labels": final_labels}
 
 
 def process_evaluation_results(metrics: dict[str, Tensor]) -> ADAPTER_METRICS:
