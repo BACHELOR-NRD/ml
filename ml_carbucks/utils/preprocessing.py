@@ -172,6 +172,7 @@ def create_clean_loader(
     If no transforms are provided, images will be loaded as np.arrays in format HWC with dtype uint8.
     """
 
+    # NOTE: Something here is causing the Jupyter notebooks to hang in debugging. Something perhaps in next iter call?
     all_datasets = []
     for img_folder, ann_file in datasets:
         ds = COCODetectionWrapper(

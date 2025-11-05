@@ -17,7 +17,7 @@ class ADAPTER_PREDICTION(TypedDict):
     Notes:
         - `boxes` is expected to be a 2D array of shape (N, 4) with [x1, y1, x2, y2].
         - `scores` is a 1D array of shape (N,) with confidence scores.
-        - `labels` is a list of length N with string labels (or category names).
+        - `labels` is a list of length N with class label indices.
     """
 
     boxes: torch.Tensor
