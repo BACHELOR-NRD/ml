@@ -1,318 +1,306 @@
 from copy import deepcopy
-from typing import List, Literal, Optional
+from typing import Literal, Optional
 
 import torch
-from torch import Tensor
 
+from ml_carbucks.utils.logger import setup_logger
+from ml_carbucks.utils.postprocessing import postprocess_prediction
+from ml_carbucks.adapters.BaseDetectionAdapter import ADAPTER_PREDICTION
 
-# -------------------- IoU Computation --------------------
-
-
-def box_iou(boxes1: Tensor, boxes2: Tensor) -> Tensor:
-    """Compute IoU between two sets of boxes in [x1, y1, x2, y2]."""
-
-    area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
-
-    area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
-
-    lt = torch.max(boxes1[:, None, :2], boxes2[:, :2])
-
-    rb = torch.min(boxes1[:, None, 2:], boxes2[:, 2:])
-
-    wh = (rb - lt).clamp(min=0)
-
-    inter = wh[:, :, 0] * wh[:, :, 1]
-
-    union = area1[:, None] + area2 - inter
-
-    return inter / (union + 1e-6)
-
-
-# -------------------- Non-Max Suppression --------------------
-
-
-def nms_fusion(preds: Tensor, iou_thresh: float = 0.5) -> Tensor:
-    """
-
-    Perform Non-Max Suppression per class.
-
-    Args:
-
-    preds: [K,6] -> [x1, y1, x2, y2, score, class_id]
-
-    Returns:
-
-    [K',6] after suppression
-
-    """
-
-    boxes, scores, labels = preds[:, :4], preds[:, 4], preds[:, 5].int()
-
-    keep_boxes = []
-
-    for c in labels.unique():
-
-        mask = labels == c
-
-        b, s = boxes[mask], scores[mask]
-
-        idxs = s.argsort(descending=True)
-
-        keep = []
-
-        while idxs.numel() > 0:
-
-            i = idxs[0]
-
-            keep.append(i.item())
-
-            if idxs.numel() == 1:
-
-                break
-
-            ious = box_iou(b[i].unsqueeze(0), b[idxs[1:]])[0]
-
-            idxs = idxs[1:][ious < iou_thresh]
-
-            kept = torch.cat(
-                [
-                    b[keep],
-                    s[keep].unsqueeze(1),
-                    torch.full((len(keep), 1), c, device=b.device),
-                ],
-                dim=1,
-            )
-
-            keep_boxes.append(kept)
-
-    return (
-        torch.cat(keep_boxes)
-        if keep_boxes
-        else torch.empty((0, 6), device=preds.device)
-    )
-
-
-# -------------------- Weighted Box Fusion --------------------
-
-
-def wbf_fusion(preds: Tensor, iou_thresh: float = 0.5) -> Tensor:
-    """
-
-    Weighted Box Fusion (WBF) per class.
-
-    Args:
-
-    preds: [K,6] -> [x1, y1, x2, y2, score, class_id]
-
-    Returns:
-
-    [K',6]
-
-    """
-
-    boxes, scores, labels = preds[:, :4], preds[:, 4], preds[:, 5].int()
-
-    merged = []
-
-    for c in labels.unique():
-
-        mask = labels == c
-
-        b, s = boxes[mask], scores[mask]
-
-        if len(b) == 0:
-
-            continue
-
-        idxs = s.argsort(descending=True)
-
-        b, s = b[idxs], s[idxs]
-
-        used = torch.zeros(len(b), dtype=torch.bool)
-
-        fused = []
-
-        for i in range(len(b)):
-
-            if used[i]:
-
-                continue
-
-            ious = box_iou(b[i].unsqueeze(0), b)[0]
-
-            mask_iou = ious >= iou_thresh
-
-            used[mask_iou] = True
-
-            weights = s[mask_iou]
-
-            weighted_box = (b[mask_iou] * weights[:, None]).sum(0) / weights.sum()
-
-            weighted_score = s[mask_iou].mean()
-
-            fused.append(
-                torch.cat(
-                    [weighted_box, torch.tensor([weighted_score, c], device=b.device)]
-                )
-            )
-
-        merged.append(torch.stack(fused))
-
-    return torch.cat(merged) if merged else torch.empty((0, 6), device=preds.device)
-
-
-# -------------------- Score Normalization --------------------
+logger = setup_logger(__name__)
 
 
 def normalize_scores(
-    preds_list: List[List[Tensor]],
+    preds_list: list[list[torch.Tensor]],
     method: Literal["minmax", "zscore"] = "minmax",
-    trust: Optional[List[float]] = None,
-) -> List[Tensor]:
+    trust: Optional[list[float]] = None,
+) -> list[torch.Tensor]:
     """
-
-    Normalize and optionally scale scores per model using trust values.
-
+    Normalize confidence scores of predictions from multiple adapters.
     Args:
-
-    preds_list: list of [N, K_i, 6] per model
-
-    method: 'minmax' or 'zscore'
-
-    trust: optional list of trust weights (same length as preds_list)
-
+        preds_list (list): List of predictions from different adapters. Each prediction is a list of tensors per image.
+        method (str): Normalization method, either "minmax" or "zscore".
+        trust (list, optional): Trust weights for each adapter. If None, equal weights are used.
+    Returns:
+        list: Normalized predictions with adjusted confidence scores.
     """
 
     if trust is None:
-
         trust = [1.0] * len(preds_list)
-
-    assert len(trust) == len(preds_list), "Trust list must match number of models."
-
     normalized_all = []
-
     for preds, t in zip(preds_list, trust):
-
         flat_scores = torch.cat([p[:, 4] for p in preds], dim=0)
-
         s_min, s_max = flat_scores.min(), flat_scores.max()
-
         mean, std = flat_scores.mean(), flat_scores.std() + 1e-6
-
         normalized = deepcopy(preds)
 
         for p in normalized:
-
             if method == "minmax":
-
                 p[:, 4] = (p[:, 4] - s_min) / (s_max - s_min + 1e-6)
-
             elif method == "zscore":
-
-                norm_scores = (p[:, 4] - mean) / std
-
-                p[:, 4] = (norm_scores - norm_scores.min()) / (
-                    norm_scores.max() - norm_scores.min() + 1e-6
-                )
-
+                p[:, 4] = (p[:, 4] - mean) / std
             else:
-
                 raise ValueError(f"Unknown normalization method: {method}")
-
             p[:, 4] = p[:, 4] * t
 
         normalized_all.append(normalized)
-
     return normalized_all
 
 
-# -------------------- Single Image Merge --------------------
-
-
-def merge_single_image(
-    preds_list: List[Tensor],
-    strategy: Literal["wbf", "nms"] = "wbf",
-    iou_thresh: float = 0.5,
-    score_thresh: float = 0.001,
-) -> Tensor:
+def weighted_boxes_fusion(
+    boxes: torch.Tensor,
+    scores: torch.Tensor,
+    labels: torch.Tensor,
+    iou_threshold: float = 0.55,
+    conf_threshold: float = 0.001,
+    max_detections: int = 300,
+) -> ADAPTER_PREDICTION:
     """
-
-    Merge predictions from multiple models for a single image.
+    Perform Weighted Boxes Fusion (WBF) on a single image's predictions.
 
     Args:
-
-    preds_list: list of [K_i,6]
+        boxes (Tensor): [N, 4] boxes in [x1, y1, x2, y2].
+        scores (Tensor): [N] confidence scores.
+        labels (Tensor): [N] class indices.
+        iou_threshold (float): IoU threshold for merging boxes.
+        conf_threshold (float): Minimum score to keep.
+        max_detections (int): Max number of output boxes.
 
     Returns:
-
-    [K',6]
-
+        ADAPTER_PREDICTION: fused boxes, scores, and labels.
     """
 
-    preds = torch.cat(preds_list, dim=0)
+    # Filter by confidence
+    keep = scores >= conf_threshold
+    boxes, scores, labels = boxes[keep], scores[keep], labels[keep]
 
-    preds = preds[preds[:, 4] > score_thresh]
+    if boxes.numel() == 0:
+        return {
+            "boxes": torch.empty((0, 4)),
+            "scores": torch.empty((0,)),
+            "labels": torch.empty((0,), dtype=torch.long),
+        }
 
-    if preds.numel() == 0:
+    # Convert to float32 for safety
+    boxes = boxes.float()
+    scores = scores.float()
 
-        return torch.empty((0, 6))
+    fused_boxes = []
+    fused_scores = []
+    fused_labels = []
 
+    for cls in labels.unique():
+        cls_mask = labels == cls
+        cls_boxes = boxes[cls_mask]
+        cls_scores = scores[cls_mask]
+
+        if cls_boxes.size(0) == 0:
+            continue
+
+        # Sort by confidence descending
+        order = torch.argsort(cls_scores, descending=True)
+        cls_boxes = cls_boxes[order]
+        cls_scores = cls_scores[order]
+
+        fused_cls_boxes = []
+        fused_cls_scores = []
+
+        while len(cls_boxes) > 0:
+            # Pick the top-scoring box
+            main_box = cls_boxes[0]
+            main_score = cls_scores[0]
+
+            if len(cls_boxes) == 1:
+                fused_cls_boxes.append(main_box)
+                fused_cls_scores.append(main_score)
+                break
+
+            # Compute IoU between top box and the rest
+            ious = box_iou(main_box.unsqueeze(0), cls_boxes[1:]).squeeze(0)
+            overlap_mask = ious > iou_threshold
+
+            overlapping_boxes = cls_boxes[1:][overlap_mask]
+            overlapping_scores = cls_scores[1:][overlap_mask]
+
+            # Include the main box itself
+            all_boxes = torch.cat([main_box.unsqueeze(0), overlapping_boxes], dim=0)
+            all_scores = torch.cat([main_score.unsqueeze(0), overlapping_scores], dim=0)
+
+            # Weighted average of coordinates
+            weights = all_scores / all_scores.sum()
+            fused_box = (all_boxes * weights[:, None]).sum(dim=0)
+
+            fused_score = all_scores.mean()  # or sum() / len()
+            fused_cls_boxes.append(fused_box)
+            fused_cls_scores.append(fused_score)
+
+            # Remove used boxes
+            keep_mask = torch.ones(len(cls_boxes), dtype=torch.bool)
+            keep_mask[1:][overlap_mask] = False
+            keep_mask[0] = False
+            cls_boxes = cls_boxes[keep_mask]
+            cls_scores = cls_scores[keep_mask]
+
+        fused_boxes.extend(fused_cls_boxes)
+        fused_scores.extend(fused_cls_scores)
+        fused_labels.extend([cls] * len(fused_cls_boxes))
+
+    if len(fused_boxes) == 0:
+        return {
+            "boxes": torch.empty((0, 4)),
+            "scores": torch.empty((0,)),
+            "labels": torch.empty((0,), dtype=torch.long),
+        }
+
+    # Convert lists to tensors
+    fused_boxes = torch.stack(fused_boxes)
+    fused_scores = torch.tensor(fused_scores)
+    fused_labels = torch.tensor(
+        [int(cls.item()) for cls in fused_labels], dtype=torch.long
+    )
+
+    # Sort final results
+    order = torch.argsort(fused_scores, descending=True)
+    fused_boxes = fused_boxes[order][:max_detections]
+    fused_scores = fused_scores[order][:max_detections]
+    fused_labels = fused_labels[order][:max_detections]
+
+    return {
+        "boxes": fused_boxes,
+        "scores": fused_scores,
+        "labels": fused_labels,
+    }
+
+
+def box_iou(box1: torch.Tensor, box2: torch.Tensor) -> torch.Tensor:
+    """Compute IoU between two sets of boxes."""
+    x1 = torch.max(box1[:, None, 0], box2[:, 0])
+    y1 = torch.max(box1[:, None, 1], box2[:, 1])
+    x2 = torch.min(box1[:, None, 2], box2[:, 2])
+    y2 = torch.min(box1[:, None, 3], box2[:, 3])
+
+    inter = (x2 - x1).clamp(min=0) * (y2 - y1).clamp(min=0)
+    area1 = (box1[:, 2] - box1[:, 0]) * (box1[:, 3] - box1[:, 1])
+    area2 = (box2[:, 2] - box2[:, 0]) * (box2[:, 3] - box2[:, 1])
+    union = area1[:, None] + area2 - inter
+    return inter / union.clamp(min=1e-6)
+
+
+def fuse_adapters_predictions(
+    adapters_predictions: list[list[ADAPTER_PREDICTION]],
+    max_detections: int,
+    iou_threshold: float,
+    conf_threshold: float,
+    strategy: Optional[Literal["nms", "wbf"]] = None,
+) -> list[ADAPTER_PREDICTION]:
+    """
+    Fuse per-image predictions from multiple adapters into a single list of ADAPTER_PREDICTIONs.
+    """
+
+    num_images = len(adapters_predictions[0])
+    list_of_tensors_per_adapter_org = [
+        [
+            (
+                torch.cat(
+                    [
+                        p["boxes"],
+                        p["scores"].unsqueeze(1),
+                        p["labels"].unsqueeze(1).float(),
+                    ],
+                    dim=1,
+                )
+                if len(p["boxes"]) > 0
+                else torch.empty((0, 6))
+            )
+            for p in preds_per_adapter
+        ]
+        for preds_per_adapter in adapters_predictions
+    ]
+
+    combined_list_of_tensors = []
+    for img_idx in range(num_images):
+        combined = torch.cat(
+            [
+                list_of_tensors_per_adapter_org[adapter_i][img_idx]
+                for adapter_i in range(len(adapters_predictions))
+            ],
+            dim=0,
+        )
+
+        # sort by confidence score (column 4) in descending order
+        if combined.numel() > 0:
+            sorted_idx = combined[:, 4].argsort(descending=True)
+            combined = combined[sorted_idx]
+
+        combined_list_of_tensors.append(combined)
+
+    strategy_predictions = []
     if strategy == "nms":
-
-        return nms_fusion(preds, iou_thresh)
-
+        logger.info("Applying NMS fusion strategy...")
+        for combined_preds in combined_list_of_tensors:
+            if combined_preds.numel() == 0:
+                nms_combined: ADAPTER_PREDICTION = {
+                    "boxes": torch.empty((0, 4)),
+                    "scores": torch.empty((0,)),
+                    "labels": torch.empty((0,), dtype=torch.long),
+                }
+            else:
+                pred_boxes = combined_preds[:, :4]
+                pred_scores = combined_preds[:, 4]
+                pred_labels = combined_preds[:, 5]
+                nms_combined = postprocess_prediction(
+                    boxes=pred_boxes,
+                    scores=pred_scores,
+                    labels=pred_labels,
+                    iou_threshold=iou_threshold,
+                    conf_threshold=conf_threshold,
+                    max_detections=max_detections,
+                )
+            strategy_predictions.append(nms_combined)
     elif strategy == "wbf":
-
-        return wbf_fusion(preds, iou_thresh)
-
+        logger.info("Applying WBF fusion strategy...")
+        for combined_preds in combined_list_of_tensors:
+            if combined_preds.numel() == 0:
+                wbf_combined: ADAPTER_PREDICTION = {
+                    "boxes": torch.empty((0, 4)),
+                    "scores": torch.empty((0,)),
+                    "labels": torch.empty((0,), dtype=torch.long),
+                }
+            else:
+                pred_boxes = combined_preds[:, :4]
+                pred_scores = combined_preds[:, 4]
+                pred_labels = combined_preds[:, 5]
+                wbf_combined = weighted_boxes_fusion(
+                    boxes=pred_boxes,
+                    scores=pred_scores,
+                    labels=pred_labels,
+                    iou_threshold=iou_threshold,
+                    conf_threshold=conf_threshold,
+                    max_detections=max_detections,
+                )
+            strategy_predictions.append(wbf_combined)
     else:
+        strategy_list_of_tensors = [
+            combined_preds[combined_preds[:, 4] >= conf_threshold]
+            .clone()
+            .detach()[:max_detections]
+            for combined_preds in combined_list_of_tensors
+        ]
+        for tpreds in strategy_list_of_tensors:
+            prediction: ADAPTER_PREDICTION = {
+                "boxes": torch.empty((0, 4)),
+                "scores": torch.empty((0,)),
+                "labels": torch.empty((0,), dtype=torch.long),
+            }
 
-        raise ValueError(f"Unknown strategy: {strategy}")
+            if tpreds.numel() > 0:
+                prediction = {
+                    "boxes": tpreds[:, :4],
+                    "scores": tpreds[:, 4],
+                    "labels": tpreds[:, 5].long(),
+                }
 
+            strategy_predictions.append(prediction)
 
-# -------------------- Batch-level Merge --------------------
-
-
-def merge_model_predictions(
-    models_preds: List[Tensor],
-    strategy: Literal["wbf", "nms"] = "wbf",
-    normalize: Optional[Literal["minmax", "zscore"]] = None,
-    trust: Optional[List[float]] = None,
-    iou_thresh: float = 0.5,
-    score_thresh: float = 0.001,
-) -> List[Tensor]:
-    """
-
-    Merge predictions from multiple detection models.
-
-    Args:
-
-    models_preds: list of [N, K_i, 6]
-
-    normalize: optional score normalization ('minmax' or 'zscore')
-
-    trust: optional list of trust weights per model
-
-    Returns:
-
-    list of N tensors [K',6]
-
-    """
-
-    if normalize is not None:
-
-        models_preds = normalize_scores(models_preds, method=normalize, trust=trust)
-
-    N = models_preds[0].shape[0]
-
-    merged_results: List[Tensor] = []
-
-    for img_idx in range(N):
-
-        preds_list = [m[img_idx] for m in models_preds]
-
-        merged = merge_single_image(preds_list, strategy, iou_thresh, score_thresh)
-
-        merged_results.append(merged)
-
-    return merged_results
+        logger.warning(f"Unknown fusion strategy: {strategy}, skipping fusion.")
+    return strategy_predictions
