@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import List, Literal, Optional
 
 import torch
@@ -164,7 +165,7 @@ def wbf_fusion(preds: Tensor, iou_thresh: float = 0.5) -> Tensor:
 
 
 def normalize_scores(
-    preds_list: List[Tensor],
+    preds_list: List[List[Tensor]],
     method: Literal["minmax", "zscore"] = "minmax",
     trust: Optional[List[float]] = None,
 ) -> List[Tensor]:
@@ -188,41 +189,41 @@ def normalize_scores(
 
     assert len(trust) == len(preds_list), "Trust list must match number of models."
 
-    normalized = []
+    normalized_all = []
 
     for preds, t in zip(preds_list, trust):
 
-        flat_scores = preds[:, :, 4]
+        flat_scores = torch.cat([p[:, 4] for p in preds], dim=0)
 
-        if method == "minmax":
+        s_min, s_max = flat_scores.min(), flat_scores.max()
 
-            s_min, s_max = flat_scores.min(), flat_scores.max()
+        mean, std = flat_scores.mean(), flat_scores.std() + 1e-6
 
-            norm_scores = (flat_scores - s_min) / (s_max - s_min + 1e-6)
+        normalized = deepcopy(preds)
 
-        elif method == "zscore":
+        for p in normalized:
 
-            mean, std = flat_scores.mean(), flat_scores.std() + 1e-6
+            if method == "minmax":
 
-            norm_scores = (flat_scores - mean) / std
+                p[:, 4] = (p[:, 4] - s_min) / (s_max - s_min + 1e-6)
 
-            norm_scores = (norm_scores - norm_scores.min()) / (
-                norm_scores.max() - norm_scores.min() + 1e-6
-            )
+            elif method == "zscore":
 
-        else:
+                norm_scores = (p[:, 4] - mean) / std
 
-            raise ValueError(f"Unknown normalization method: {method}")
+                p[:, 4] = (norm_scores - norm_scores.min()) / (
+                    norm_scores.max() - norm_scores.min() + 1e-6
+                )
 
-        # Apply trust factor (acts like scaling confidence by model reliability)
+            else:
 
-        preds_clone = preds.clone()
+                raise ValueError(f"Unknown normalization method: {method}")
 
-        preds_clone[:, :, 4] = norm_scores * t
+            p[:, 4] = p[:, 4] * t
 
-        normalized.append(preds_clone)
+        normalized_all.append(normalized)
 
-    return normalized
+    return normalized_all
 
 
 # -------------------- Single Image Merge --------------------

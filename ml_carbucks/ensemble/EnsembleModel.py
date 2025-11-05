@@ -8,7 +8,10 @@ from tqdm import tqdm
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.preprocessing import create_clean_loader
 from ml_carbucks.utils.postprocessing import process_evaluation_results
-from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
+from ml_carbucks.adapters.BaseDetectionAdapter import (
+    ADAPTER_METRICS,
+    BaseDetectionAdapter,
+)
 
 logger = setup_logger(__name__)
 
@@ -34,7 +37,7 @@ class EnsembleModel:
 
     def evaluate_adapters_by_predict_from_dataset(
         self, datasets: List[Tuple[str | Path, str | Path]]
-    ) -> List[dict]:
+    ) -> List[ADAPTER_METRICS]:
 
         metrics = [MeanAveragePrecision() for _ in self.adapters]
         loader = create_clean_loader(

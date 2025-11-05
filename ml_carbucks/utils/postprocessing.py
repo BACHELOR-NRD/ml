@@ -1,9 +1,11 @@
-from typing import Any
 import torch
 from torch import Tensor
 from torchvision.ops import nms
 
-from ml_carbucks.adapters.BaseDetectionAdapter import ADAPTER_PREDICTION
+from ml_carbucks.adapters.BaseDetectionAdapter import (
+    ADAPTER_PREDICTION,
+    ADAPTER_METRICS,
+)
 
 
 def postprocess_prediction(
@@ -82,7 +84,7 @@ def postprocess_prediction(
     }
 
 
-def process_evaluation_results(metrics: dict[str, Tensor]) -> dict[str, Any]:
+def process_evaluation_results(metrics: dict[str, Tensor]) -> ADAPTER_METRICS:
     """
     Process evaluation results from Mean Average Precision metric.
 
@@ -95,5 +97,6 @@ def process_evaluation_results(metrics: dict[str, Tensor]) -> dict[str, Any]:
     return {
         "map_50": metrics["map_50"].item(),
         "map_50_95": metrics["map"].item(),
+        "map_75": metrics["map_75"].item(),
         "classes": metrics["classes"].tolist() if "classes" in metrics else [],
     }
