@@ -114,6 +114,8 @@ def create_objective(
     results_dir: Path,
 ) -> Callable:
 
+    best_score = -float("inf")
+
     def objective(trial: Trial) -> float:
 
         try:
@@ -126,11 +128,6 @@ def create_objective(
 
             metrics = trial_adapter.evaluate(datasets=val_datasets)
 
-            # NOTE: saving all the models may require too much disk space
-            # save_path = trial_adapter.save(
-            #     dir=results_dir,
-            #     prefix=f"trial_{trial.number}_{adapter.__class__.__name__}",
-            # )
             score = metrics["map_50_95"]
 
             logger.info(
@@ -139,6 +136,20 @@ def create_objective(
 
             trial.set_user_attr("params", params)
             trial.set_user_attr("metrics", metrics)
+
+            if score > best_score:
+                nonlocal best_score
+                best_score = score
+
+                _ = trial_adapter.save(
+                    dir=results_dir,
+                    prefix=f"best_{adapter.__class__.__name__}",
+                )
+
+            _ = trial_adapter.save(
+                dir=results_dir,
+                prefix=f"last_{adapter.__class__.__name__}",
+            )
 
             return score
         except optuna.exceptions.TrialPruned as e:
