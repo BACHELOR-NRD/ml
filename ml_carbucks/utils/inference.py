@@ -101,13 +101,17 @@ def plot_img_pred_subplots(
             w = xmax - xmin
             h = ymax - ymin
 
-            plt.gca().add_patch(Rectangle((x, y), w, h, fill=False, color=class_colors[labels[i] - 1]))  # type: ignore
+            if labels is None:
+                color = "red"
+            else:
+                color = class_colors[int(labels[i]) - 1]  # type: ignore
+            plt.gca().add_patch(Rectangle((x, y), w, h, fill=False, color=color))  # type: ignore
             if scores is not None:
                 plt.text(
                     x,
                     y,
                     f"{scores[i]:.2f}",
-                    bbox={"facecolor": class_colors[labels[i] - 1], "alpha": 0.1},  # type: ignore
+                    bbox={"facecolor": color, "alpha": 0.1},  # type: ignore
                     color="white",
                 )
             if labels is not None:
@@ -115,7 +119,7 @@ def plot_img_pred_subplots(
                     x + w,
                     y,
                     f"{labels[i]}",
-                    bbox={"facecolor": class_colors[labels[i] - 1], "alpha": 0.5},  # type: ignore
+                    bbox={"facecolor": color, "alpha": 0.5},  # type: ignore
                     color="white",
                 )
 

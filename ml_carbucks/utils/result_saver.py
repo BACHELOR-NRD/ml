@@ -32,13 +32,16 @@ class ResultSaver:
         return self
 
     def plot(
-        self, secondary_y: str = "val_map", save: bool = True, show: bool = True
+        self,
+        secondaries_y: list[str] = ["val_map"],
+        save: bool = True,
+        show: bool = True,
     ) -> "ResultSaver":
         df = pd.DataFrame(self.data)
         df.plot(
             x="epoch",
-            y=["loss", secondary_y],
-            secondary_y=secondary_y,  # type: ignore
+            y=["loss", *secondaries_y],
+            secondary_y=secondaries_y,  # type: ignore
             title="Training Metrics over Epochs",
         )
         if save:
