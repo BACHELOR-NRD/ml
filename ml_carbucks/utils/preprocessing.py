@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
@@ -5,6 +6,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, ConcatDataset
 from torchvision.datasets import CocoDetection
+from PIL import ImageOps
 
 from ml_carbucks.utils.logger import setup_logger
 
@@ -86,9 +88,10 @@ def simple_transform() -> A.Compose:
 
 
 class COCODetectionWrapper(Dataset):
-    def __init__(self, img_folder, ann_file, transforms=None):
+    def __init__(self, img_folder, ann_file, transforms=None, exif_aware: bool = False):
         self.dataset = CocoDetection(img_folder, ann_file)
         self.transforms = transforms
+        self.exif_aware = exif_aware
 
         # Map COCO category IDs (non-sequential) -> continuous label IDs
         label_ids = [cat["id"] for cat in self.dataset.coco.cats.values()]
@@ -106,8 +109,21 @@ class COCODetectionWrapper(Dataset):
             for _, cat in enumerate(self.dataset.coco.cats.values())
         }
 
+        anns = json.load(open(ann_file, "r"))
+        self.img_id_to_path = {}
+        for img_info in anns["images"]:
+            img_id = img_info["id"]
+            img_filename = img_info["file_name"]
+            self.img_id_to_path[img_id] = str(Path(img_folder) / img_filename)
+
     def __getitem__(self, idx):
         img, anns = self.dataset[idx]
+
+        # NOTE: Modern images may have EXIF orientation data that needs to be handled
+        # without this, some images may be loaded in wrong orientation
+        if self.exif_aware:
+            img = ImageOps.exif_transpose(img)
+
         img = np.array(img, dtype=np.uint8)  # needed for Albumentations
 
         if len(anns) == 0:
@@ -145,6 +161,7 @@ class COCODetectionWrapper(Dataset):
             "boxes": torch.from_numpy(boxes_voc),
             "labels": torch.from_numpy(labels),
             "image_id": torch.tensor(idx),
+            "image_path": self.img_id_to_path[self.dataset.ids[idx]],
             "area": torch.from_numpy(
                 (boxes_voc[:, 2] - boxes_voc[:, 0])
                 * (boxes_voc[:, 3] - boxes_voc[:, 1])
@@ -167,6 +184,7 @@ def create_clean_loader(
     shuffle: bool,
     batch_size: int,
     transforms: A.Compose | None,
+    exif_aware: bool = False,
 ) -> DataLoader:
     """A function that creates a neat loader for image datasets.
     If no transforms are provided, images will be loaded as np.arrays in format HWC with dtype uint8.
@@ -179,6 +197,7 @@ def create_clean_loader(
             img_folder=img_folder,
             ann_file=ann_file,
             transforms=transforms,
+            exif_aware=exif_aware,
         )
         all_datasets.append(ds)
 

@@ -34,6 +34,9 @@ class ADAPTER_METRICS(TypedDict, total=False):
     classes: Required[List[int]]
 
 
+ADAPTER_DATASETS = List[Tuple[str | Path, str | Path]]
+
+
 @dataclass
 class BaseDetectionAdapter(ABC):
     classes: List[str]
@@ -56,17 +59,11 @@ class BaseDetectionAdapter(ABC):
         pass
 
     @abstractmethod
-    # def fit(self, img_dir: str | Path, ann_file: str | Path) -> "BaseDetectionAdapter":
-    def fit(
-        self, datasets: List[Tuple[str | Path, str | Path]]
-    ) -> "BaseDetectionAdapter":
+    def fit(self, datasets: ADAPTER_DATASETS) -> "BaseDetectionAdapter":
         pass
 
     @abstractmethod
-    # def evaluate(self, img_dir: str | Path, ann_file: str | Path) -> Dict[str, float]:
-    def evaluate(
-        self, datasets: List[Tuple[str | Path, str | Path]]
-    ) -> ADAPTER_METRICS:
+    def evaluate(self, datasets: ADAPTER_DATASETS) -> ADAPTER_METRICS:
         pass
 
     @abstractmethod
@@ -92,8 +89,8 @@ class BaseDetectionAdapter(ABC):
     @abstractmethod
     def debug(
         self,
-        train_datasets: List[Tuple[str | Path, str | Path]],
-        val_datasets: List[Tuple[str | Path, str | Path]],
+        train_datasets: ADAPTER_DATASETS,
+        val_datasets: ADAPTER_DATASETS,
         results_path: str | Path,
         results_name: str,
     ) -> ADAPTER_METRICS:
