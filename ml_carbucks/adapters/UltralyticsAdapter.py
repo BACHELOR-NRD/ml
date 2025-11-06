@@ -141,6 +141,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         val_datasets: List[Tuple[str | Path, str | Path]],
         results_path: str | Path,
         results_name: str,
+        visualize: Literal["every", "last", "none"] = "none",
     ) -> ADAPTER_METRICS:
         logger.error("Debugging not implemented for UltralyticsAdapter.")
         raise NotImplementedError("Debug method is not implemented.")

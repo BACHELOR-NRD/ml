@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, TypedDict, Required
+from typing import Any, Dict, List, Literal, Tuple, TypedDict, Required
 from dataclasses import dataclass, field
 import numpy as np
 
@@ -93,6 +93,7 @@ class BaseDetectionAdapter(ABC):
         val_datasets: ADAPTER_DATASETS,
         results_path: str | Path,
         results_name: str,
+        visualize: Literal["every", "last", "none"] = "none",
     ) -> ADAPTER_METRICS:
         """Debug training and evaluation loops."""
         pass
