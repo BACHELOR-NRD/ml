@@ -1,7 +1,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 
 import torch
 import numpy as np
@@ -276,6 +276,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         val_datasets: List[Tuple[str | Path, str | Path]],
         results_path: str | Path,
         results_name: str,
+        visualize: Literal["every", "last", "none"] = "none",
     ) -> ADAPTER_METRICS:
         logger.info("Debugging training and evaluation loops...")
 
@@ -306,7 +307,13 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             logger.info(
                 f"Debug Epoch {epoch}/{epochs} - Loss: {total_loss}, Val MAP: {val_metrics['map_50_95']}"
             )
-            saver.plot(show=False)
+
+            show = False
+            if visualize == "every":
+                show = True
+            elif visualize == "last" and epoch == epochs:
+                show = True
+            saver.plot(show=show)
 
         if val_metrics is None:
             raise RuntimeError("Validation metrics were not computed during debugging.")
