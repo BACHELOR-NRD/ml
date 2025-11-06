@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 
 import numpy as np
 import torch
@@ -15,11 +15,15 @@ from torchvision.models.detection.faster_rcnn import (
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
+    ADAPTER_METRICS,
     ADAPTER_PREDICTION,
     BaseDetectionAdapter,
 )
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks.utils.postprocessing import postprocess_prediction
+from ml_carbucks.utils.postprocessing import (
+    postprocess_prediction_nms,
+    postprocess_evaluation_results,
+)
 from ml_carbucks.utils.preprocessing import create_clean_loader, create_transforms
 from ml_carbucks.utils.result_saver import ResultSaver
 
@@ -82,7 +86,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             scores = output["scores"]
             labels = output["labels"]
 
-            prediction = postprocess_prediction(
+            prediction = postprocess_prediction_nms(
                 boxes,
                 scores,
                 labels,
@@ -231,13 +235,14 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         val_datasets: List[Tuple[str | Path, str | Path]],
         results_path: str | Path,
         results_name: str,
-    ) -> Dict[str, float]:
+    ) -> ADAPTER_METRICS:
         logger.info("Debugging training and evaluation loops...")
         epochs = self.epochs
         train_loader = self._create_loader(train_datasets, is_training=True)
         optimizer = self._create_optimizer()
         saver = ResultSaver(results_path, name=results_name)
 
+        val_metrics: Optional[ADAPTER_METRICS] = None
         for epoch in range(1, epochs + 1):
             logger.info(f"Debug Epoch {epoch}/{epochs}")
             total_loss = self.train_epoch(optimizer, train_loader)
@@ -254,11 +259,13 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
             saver.plot(show=False)
 
-        return val_metrics  # type: ignore
+        if val_metrics is None:
+            raise RuntimeError("Validation metrics were not computed during debugging.")
+        return val_metrics
 
     def evaluate(
         self, datasets: List[Tuple[str | Path, str | Path]]
-    ) -> Dict[str, float]:
+    ) -> ADAPTER_METRICS:
         logger.info("Starting evaluation...")
         self.model.eval()
 
@@ -278,9 +285,6 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         results = evaluator.compute()
 
-        metrics = {
-            "map_50": results["map_50"].item(),
-            "map_50_95": results["map"].item(),
-        }
+        metrics = postprocess_evaluation_results(results)
 
         return metrics

@@ -4,7 +4,7 @@ from typing import Literal, Optional
 import torch
 
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks.utils.postprocessing import postprocess_prediction
+from ml_carbucks.utils.postprocessing import postprocess_prediction_nms
 from ml_carbucks.adapters.BaseDetectionAdapter import ADAPTER_PREDICTION
 
 logger = setup_logger(__name__)
@@ -248,7 +248,7 @@ def fuse_adapters_predictions(
                 pred_boxes = combined_preds[:, :4]
                 pred_scores = combined_preds[:, 4]
                 pred_labels = combined_preds[:, 5]
-                nms_combined = postprocess_prediction(
+                nms_combined = postprocess_prediction_nms(
                     boxes=pred_boxes,
                     scores=pred_scores,
                     labels=pred_labels,

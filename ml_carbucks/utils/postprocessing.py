@@ -8,7 +8,7 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
 )
 
 
-def postprocess_prediction(
+def postprocess_prediction_nms(
     boxes: Tensor,
     scores: Tensor,
     labels: Tensor,
@@ -101,9 +101,10 @@ def postprocess_prediction(
     return {"boxes": final_boxes, "scores": final_scores, "labels": final_labels}
 
 
-def process_evaluation_results(metrics: dict[str, Tensor]) -> ADAPTER_METRICS:
+def postprocess_evaluation_results(metrics: dict[str, Tensor]) -> ADAPTER_METRICS:
     """
     Process evaluation results from Mean Average Precision metric.
+    This was created to unify the output format from
 
     Args:
         metrics (dict): A dictionary containing evaluation metrics.
