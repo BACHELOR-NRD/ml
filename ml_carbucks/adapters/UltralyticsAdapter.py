@@ -5,17 +5,18 @@ from typing_extensions import Literal
 import yaml
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 from ultralytics.models.yolo import YOLO
 from ultralytics.models.rtdetr import RTDETR
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
+    ADAPTER_METRICS,
     BaseDetectionAdapter,
     ADAPTER_PREDICTION,
 )
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks.utils.postprocessing import postprocess_prediction
+from ml_carbucks.utils.postprocessing import postprocess_prediction_nms
 
 logger = setup_logger(__name__)
 
@@ -102,7 +103,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
     def evaluate(
         self, datasets: List[Tuple[str | Path, str | Path]]
-    ) -> Dict[str, float]:
+    ) -> ADAPTER_METRICS:
         logger.info("Starting evaluation...")
 
         img_dir, ann_file = datasets[0]
@@ -123,9 +124,13 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             name=self.name,
         )
 
-        metrics = {
+        metrics: ADAPTER_METRICS = {
             "map_50": results.results_dict["metrics/mAP50(B)"],
+            "map_75": -np.inf,  # FIXME: verify that the key is correct: results.results_dict["metrics/mAP75(B)"]
             "map_50_95": results.results_dict["metrics/mAP50-95(B)"],
+            "classes": [
+                i for i in range(1, len(self.classes) + 1)
+            ],  # FIXME: try to get class-wise metrics from Ultralytics
         }
 
         return metrics
@@ -136,7 +141,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         val_datasets: List[Tuple[str | Path, str | Path]],
         results_path: str | Path,
         results_name: str,
-    ) -> Dict[str, float]:
+    ) -> ADAPTER_METRICS:
         logger.error("Debugging not implemented for UltralyticsAdapter.")
         raise NotImplementedError("Debug method is not implemented.")
 
@@ -316,7 +321,7 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
                 result.boxes.cls + 1
             )  # Ultralytics class ids are 0-based so we increment by 1
 
-            prediction = postprocess_prediction(
+            prediction = postprocess_prediction_nms(
                 boxes=boxes,
                 scores=scores,
                 labels=labels,
