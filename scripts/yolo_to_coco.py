@@ -4,8 +4,8 @@ import yaml
 from PIL import Image
 
 # Base paths
-base_dir = "/home/bachelor/ml-carbucks/data/car_dd"
-splits = ["train", "val", "test"]
+base_dir = "/home/bachelor/ml-carbucks/data/carbucks"
+splits = ["train", "val"]
 
 # Load class names from dataset.yaml
 yaml_file = os.path.join(base_dir, "dataset.yaml")
@@ -18,11 +18,21 @@ if isinstance(data_yaml["names"], dict):
 else:
     names = data_yaml["names"]
 
-categories = [{"id": i, "name": name} for i, name in enumerate(names)]
+categories = [{"id": i + 1, "name": name} for i, name in enumerate(names)]
 
 
 def yolo_to_coco(images_dir, labels_dir, output_json):
-    coco = {"images": [], "annotations": [], "categories": categories}
+    coco = {
+        "images": [],
+        "annotations": [],
+        "categories": categories,
+        "info": {
+            "description": "Carbucks Dataset",
+            "version": "1.0",
+            "year": 2025,
+        },
+        "licenses": [],
+    }
     ann_id = 1
     img_id = 1
 
@@ -53,7 +63,7 @@ def yolo_to_coco(images_dir, labels_dir, output_json):
                         {
                             "id": ann_id,
                             "image_id": img_id,
-                            "category_id": int(cls),
+                            "category_id": int(cls) + 1,
                             "bbox": [x_min, y_min, box_w, box_h],
                             "area": box_w * box_h,
                             "iscrowd": 0,
@@ -74,6 +84,6 @@ def yolo_to_coco(images_dir, labels_dir, output_json):
 for split in splits:
     images_dir = os.path.join(base_dir, "images", split)
     labels_dir = os.path.join(base_dir, "labels", split)
-    output_json = os.path.join(base_dir, f"instances_{split}.json")
+    output_json = os.path.join(base_dir, f"instances_{split}_curated.json")
 
     yolo_to_coco(images_dir, labels_dir, output_json)
