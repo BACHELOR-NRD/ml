@@ -1,7 +1,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import numpy as np
@@ -15,9 +15,13 @@ from effdet.bench import DetBenchPredict  # noqa F401
 from effdet.data.transforms import ResizePad, ImageToNumpy, Compose
 from timm.optim._optim_factory import create_optimizer_v2
 
-from ml_carbucks.utils.postprocessing import postprocess_prediction
+from ml_carbucks.utils.postprocessing import (
+    postprocess_prediction_nms,
+    postprocess_evaluation_results,
+)
 from ml_carbucks.utils.result_saver import ResultSaver
 from ml_carbucks.adapters.BaseDetectionAdapter import (
+    ADAPTER_METRICS,
     BaseDetectionAdapter,
     ADAPTER_PREDICTION,
 )
@@ -134,7 +138,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                 scores = pred[:, 4]
                 labels_idx = pred[:, 5]
 
-                prediction = postprocess_prediction(
+                prediction = postprocess_prediction_nms(
                     boxes,
                     scores,
                     labels_idx,
@@ -272,7 +276,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         val_datasets: List[Tuple[str | Path, str | Path]],
         results_path: str | Path,
         results_name: str,
-    ) -> Dict[str, float]:
+    ) -> ADAPTER_METRICS:
         logger.info("Debugging training and evaluation loops...")
 
         epochs = self.epochs
@@ -287,7 +291,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             path=results_path,
             name=results_name,
         )
-        val_metrics = dict()
+        val_metrics: Optional[ADAPTER_METRICS] = None
         for epoch in range(1, epochs + 1):
             logger.info(f"Epoch {epoch}/{epochs}")
 
@@ -304,13 +308,15 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             )
             saver.plot(show=False)
 
+        if val_metrics is None:
+            raise RuntimeError("Validation metrics were not computed during debugging.")
         return val_metrics
 
     def evaluate(
         self,
         datasets: List[Tuple[str | Path, str | Path]],
         include_default: bool = False,
-    ) -> Dict[str, float]:
+    ) -> ADAPTER_METRICS:
         self.model.eval()
 
         val_loader = self._create_loader(datasets, is_training=False)
@@ -387,17 +393,11 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                     )
 
         results = evaluator.compute()
-        metrics = {
-            "map_50": results["map_50"].item(),
-            "map_50_95": results["map"].item(),
-        }
+        metrics = postprocess_evaluation_results(results)
+
         if include_default and default_evaluator is not None:
             default_results = default_evaluator.evaluate()
-            metrics.update(
-                {
-                    "default_map_50_95": default_results[0],
-                    "default_map_50": default_results[1],
-                }
-            )
+            metrics["default_map_50_95"] = default_results[0]  # type: ignore
+            metrics["default_map_50"] = default_results[1]  # type: ignore
 
         return metrics

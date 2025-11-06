@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.preprocessing import create_clean_loader
-from ml_carbucks.utils.postprocessing import process_evaluation_results
+from ml_carbucks.utils.postprocessing import postprocess_evaluation_results
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_METRICS,
     BaseDetectionAdapter,
@@ -54,5 +54,5 @@ class EnsembleModel:
             metric = metrics[adapter_idx].compute()
             results.append(metric)
 
-        final_results = [process_evaluation_results(metric) for metric in results]
+        final_results = [postprocess_evaluation_results(metric) for metric in results]
         return final_results

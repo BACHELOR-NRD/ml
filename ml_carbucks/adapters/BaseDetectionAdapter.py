@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, TypedDict
+from typing import Any, Dict, List, Tuple, TypedDict, Required
 from dataclasses import dataclass, field
 import numpy as np
 
@@ -28,10 +28,10 @@ class ADAPTER_PREDICTION(TypedDict):
 class ADAPTER_METRICS(TypedDict, total=False):
     """Standardized adapter evaluation metrics."""
 
-    map_50: float
-    map_75: float
-    map_50_95: float
-    classes: List[int]
+    map_50: Required[float]
+    map_75: Required[float]
+    map_50_95: Required[float]
+    classes: Required[List[int]]
 
 
 @dataclass
@@ -66,7 +66,7 @@ class BaseDetectionAdapter(ABC):
     # def evaluate(self, img_dir: str | Path, ann_file: str | Path) -> Dict[str, float]:
     def evaluate(
         self, datasets: List[Tuple[str | Path, str | Path]]
-    ) -> Dict[str, float]:
+    ) -> ADAPTER_METRICS:
         pass
 
     @abstractmethod
@@ -96,7 +96,7 @@ class BaseDetectionAdapter(ABC):
         val_datasets: List[Tuple[str | Path, str | Path]],
         results_path: str | Path,
         results_name: str,
-    ) -> Dict[str, float]:
+    ) -> ADAPTER_METRICS:
         """Debug training and evaluation loops."""
         pass
 
