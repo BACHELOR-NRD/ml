@@ -21,7 +21,11 @@ def find_duplicate_images(folder):
                     img.close()
 
                     if h in hashes:
+                        print("-----")
                         print(f"[DUPLICATE] {filepath} == {hashes[h]}")
+                        print(
+                            f"Remove {filepath} and its label file {filepath.rsplit('.', 1)[0].replace('images', 'labels') + '.txt'} if exists."
+                        )
                         duplicates.append((filepath, hashes[h]))
                     else:
                         hashes[h] = filepath
