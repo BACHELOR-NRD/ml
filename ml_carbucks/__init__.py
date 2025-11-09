@@ -7,6 +7,7 @@ TEST_DIR = Path(os.path.abspath(__file__)).parent.parent / "tests"
 RESULTS_DIR = Path(os.path.abspath(__file__)).parent.parent / "results"
 PRODUCTS_DIR = Path(os.path.abspath(__file__)).parent.parent / "products"
 
+os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
 os.makedirs(PRODUCTS_DIR, exist_ok=True)
 
