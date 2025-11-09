@@ -1,7 +1,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Literal, Optional, Tuple
+from typing import Dict, List, Literal, Optional, Tuple
 
 import torch
 import numpy as np
@@ -19,6 +19,7 @@ from ml_carbucks.utils.postprocessing import (
     postprocess_prediction_nms,
     postprocess_evaluation_results,
 )
+from ml_carbucks.utils.preprocessing import preprocess_images
 from ml_carbucks.utils.result_saver import ResultSaver
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_METRICS,
@@ -46,6 +47,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     weight_decay: float = 9e-6
     confidence_threshold: float = 0.15
     training_augmentations: bool = True
+    loader: Literal["inbuild", "custom"] = "inbuild"
 
     def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model{suffix}.pth"
@@ -54,6 +56,25 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         return save_path
 
     def _preprocess_images(
+        self, images: List[np.ndarray]
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if self.loader == "inbuild":
+            return self._preprocess_images_inbuild_loader(images)
+        elif self.loader == "custom":
+            preprocessed_images, scales, original_sizes = preprocess_images(
+                images, img_size=self.img_size
+            )
+            batch_img_tensor = torch.stack(preprocessed_images).to(self.device)
+            batch_scales = torch.tensor(scales, dtype=torch.float32, device=self.device)
+            batch_original_sizes = torch.tensor(
+                original_sizes, dtype=torch.float32, device=self.device
+            )
+
+            return batch_img_tensor, batch_scales, batch_original_sizes
+        else:
+            raise ValueError(f"Unknown loader type: {self.loader}")
+
+    def _preprocess_images_inbuild_loader(
         self, images: List[np.ndarray]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         input_config = resolve_input_config(self.get_params(), self.model.config)
@@ -102,6 +123,31 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         )
 
         return batch_tensor, scales_tensor, batch_original_sizes
+
+    def _convert_batch(
+        self, imgs: List[torch.Tensor], targets: Dict | List[Dict]
+    ) -> Tuple[torch.Tensor, dict]:
+        if self.loader == "inbuild":
+            # NOTE: In-build loader already provides correct format
+            return imgs, targets  # type: ignore
+        elif self.loader == "custom":
+            return self._convert_batch_custom_loader(imgs, targets)  # type: ignore
+        else:
+            raise ValueError(f"Unknown loader type: {self.loader}")
+
+    def _convert_batch_custom_loader(
+        self, imgs: List[torch.Tensor], targets: List[dict]
+    ) -> Tuple[torch.Tensor, dict]:
+        imgs = list(img.to(self.device) for img in imgs)
+        targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
+        imgs_tensor = torch.stack(imgs)
+        targets_dict = {
+            "bbox": torch.stack([t["boxes"] for t in targets]),
+            "cls": torch.stack([t["labels"] for t in targets]),
+            "img_size": torch.stack([t["img_size"] for t in targets]),
+            "img_scale": torch.stack([t["img_scale"] for t in targets]),
+        }
+        return imgs_tensor, targets_dict
 
     def predict(
         self,
@@ -261,7 +307,9 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         total_loss = 0.0
         for imgs, targets in tqdm(loader):
-            output = self.model(imgs, targets)
+            cimgs, ctargets = self._convert_batch(imgs, targets)
+
+            output = self.model(cimgs, ctargets)
             loss = output["loss"]
             total_loss += loss.item()
             optimizer.zero_grad()
@@ -337,13 +385,15 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         with torch.no_grad():
             for imgs, targets in val_loader:
-                output = self.model(imgs, targets)
+                cimgs, ctargets = self._convert_batch(imgs, targets)
+
+                output = self.model(cimgs, ctargets)
                 loss = output["loss"]
                 total_loss += loss.item()
 
                 if include_default and default_evaluator is not None:
                     default_evaluator.add_predictions(
-                        detections=output["detections"], target=targets
+                        detections=output["detections"], target=ctargets
                     )
 
                 # NOTE:
@@ -353,7 +403,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                 # Predicitons have a lot of low confidence scores and ground_truths have a lot of -1 values that just indicate no object
                 # We need to filter them out
                 for i in range(len(imgs)):
-                    scale = targets["img_scale"][i]
+                    scale = ctargets["img_scale"][i]
 
                     pred_mask = (
                         output["detections"][i][:, 4] >= self.confidence_threshold
@@ -368,20 +418,20 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                         pred_scores = output["detections"][i][pred_mask, 4]
                         pred_labels = output["detections"][i][pred_mask, 5].long()
 
-                    gt_mask = targets["cls"][i] != -1
+                    gt_mask = ctargets["cls"][i] != -1
                     if gt_mask.sum() == 0:
                         # No ground truth boxes
                         gt_boxes = torch.zeros((0, 4), dtype=torch.float32)
                         gt_labels = torch.zeros((0,), dtype=torch.int64)
                     else:
-                        gt_boxes_yxyx_raw = targets["bbox"][i][gt_mask]
+                        gt_boxes_yxyx_raw = ctargets["bbox"][i][gt_mask]
                         gt_boxes_xyxy = torch.zeros_like(gt_boxes_yxyx_raw)
                         gt_boxes_xyxy[:, 0] = gt_boxes_yxyx_raw[:, 1]
                         gt_boxes_xyxy[:, 1] = gt_boxes_yxyx_raw[:, 0]
                         gt_boxes_xyxy[:, 2] = gt_boxes_yxyx_raw[:, 3]
                         gt_boxes_xyxy[:, 3] = gt_boxes_yxyx_raw[:, 2]
                         gt_boxes = gt_boxes_xyxy * scale
-                        gt_labels = targets["cls"][i][gt_mask].long()
+                        gt_labels = ctargets["cls"][i][gt_mask].long()
 
                     evaluator.update(
                         preds=[
