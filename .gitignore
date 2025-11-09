@@ -30,6 +30,7 @@ __pycache__/
 # !**/data/**/*.json
 
 # Product files
+**/products/
 !**/products/*.pt
 !**/products/*.pth
 !**/products/*.csv
