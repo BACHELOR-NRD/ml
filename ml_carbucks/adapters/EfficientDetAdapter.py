@@ -19,7 +19,11 @@ from ml_carbucks.utils.postprocessing import (
     postprocess_prediction_nms,
     postprocess_evaluation_results,
 )
-from ml_carbucks.utils.preprocessing import preprocess_images
+from ml_carbucks.utils.preprocessing import (
+    create_clean_loader,
+    create_transforms,
+    preprocess_images,
+)
 from ml_carbucks.utils.result_saver import ResultSaver
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_METRICS,
@@ -261,6 +265,17 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     def _create_loader(
         self, datasets: List[Tuple[str | Path, str | Path]], is_training: bool
     ):
+        if self.loader == "inbuild":
+            loader = self._create_inbuild_loader(datasets, is_training)
+        elif self.loader == "custom":
+            loader = self._create_custom_loader(datasets, is_training)
+        else:
+            raise ValueError(f"Unknown loader type: {self.loader}")
+        return loader
+
+    def _create_inbuild_loader(
+        self, datasets: List[Tuple[str | Path, str | Path]], is_training: bool
+    ):
         batch_size = self.batch_size
 
         all_datasets = []
@@ -296,6 +311,25 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             anchor_labeler=None,
             transform_fn=None,
             collate_fn=None,
+        )
+
+        return loader
+
+    def _create_custom_loader(
+        self, datasets: List[Tuple[str | Path, str | Path]], is_training: bool
+    ):
+        batch_size = self.batch_size
+        img_size = self.img_size
+        loader = create_clean_loader(
+            datasets,
+            shuffle=is_training and self.training_augmentations,
+            batch_size=batch_size,
+            transforms=create_transforms(
+                is_training=is_training and self.training_augmentations,
+                img_size=img_size,
+            ),
+            format="yxyx",
+            placeholders=100,
         )
 
         return loader
