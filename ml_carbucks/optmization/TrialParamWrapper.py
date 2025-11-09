@@ -10,8 +10,8 @@ class TrialParamWrapper:
 
     IMG_SIZE_OPTIONS = [
         # 256,
-        384,
-        # 512,
+        # 384,
+        512,
         # 640,
         # 768,
         # 1024,
@@ -54,8 +54,9 @@ class TrialParamWrapper:
             "lr": trial.suggest_float("lr", 1e-4, 1e-2, log=True),
             "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
             "confidence_threshold": trial.suggest_float(
-                "confidence_threshold", 0.02, 0.35
+                "confidence_threshold", 0.01, 0.25
             ),
+            "loader": trial.suggest_categorical("loader", ["inbuild", "custom"]),
         }
         return params
 
