@@ -61,6 +61,14 @@
             "module": "pytest",
             "args": ["-v", "-s", "./tests"],
             "console": "internalConsole",
+        },
+        {
+            "name": "Damian Experiment",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/ml_carbucks/experiments/ignore_damian.py",
+            "console": "internalConsole",
+            "justMyCode": false
         }
 
     ]

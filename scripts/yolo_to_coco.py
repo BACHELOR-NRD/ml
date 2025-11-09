@@ -3,32 +3,15 @@ import json
 import yaml
 from PIL import Image
 
-# Base paths
-base_dir = "/home/bachelor/ml-carbucks/data/carbucks"
-splits = ["train", "val"]
 
-# Load class names from dataset.yaml
-yaml_file = os.path.join(base_dir, "dataset.yaml")
-with open(yaml_file, "r") as f:
-    data_yaml = yaml.safe_load(f)
-
-# "names" can be dict or list in YOLO .yaml
-if isinstance(data_yaml["names"], dict):
-    names = [data_yaml["names"][k] for k in sorted(data_yaml["names"].keys())]
-else:
-    names = data_yaml["names"]
-
-categories = [{"id": i + 1, "name": name} for i, name in enumerate(names)]
-
-
-def yolo_to_coco(images_dir, labels_dir, output_json):
+def yolo_to_coco(images_dir, labels_dir, categories, output_json):
     coco = {
         "images": [],
         "annotations": [],
         "categories": categories,
         "info": {
-            "description": "Carbucks Dataset",
-            "version": "1.0",
+            "description": "",
+            "version": "",
             "year": 2025,
         },
         "licenses": [],
@@ -80,10 +63,32 @@ def yolo_to_coco(images_dir, labels_dir, output_json):
     )
 
 
-# Convert all splits
-for split in splits:
-    images_dir = os.path.join(base_dir, "images", split)
-    labels_dir = os.path.join(base_dir, "labels", split)
-    output_json = os.path.join(base_dir, f"instances_{split}_curated.json")
+def convert_yolo_to_coco(base_dir, splits):
 
-    yolo_to_coco(images_dir, labels_dir, output_json)
+    # Load class names from dataset.yaml
+    yaml_file = os.path.join(base_dir, "dataset.yaml")
+    with open(yaml_file, "r") as f:
+        data_yaml = yaml.safe_load(f)
+
+    # "names" can be dict or list in YOLO .yaml
+    if isinstance(data_yaml["names"], dict):
+        names = [data_yaml["names"][k] for k in sorted(data_yaml["names"].keys())]
+    else:
+        names = data_yaml["names"]
+
+    categories = [{"id": i + 1, "name": name} for i, name in enumerate(names)]
+
+    # Convert all splits
+    for split in splits:
+        images_dir = os.path.join(base_dir, "images", split)
+        labels_dir = os.path.join(base_dir, "labels", split)
+        output_json = os.path.join(base_dir, f"instances_{split}_curated.json")
+
+        yolo_to_coco(images_dir, labels_dir, categories, output_json)
+
+
+if __name__ == "__main__":
+    base_directory = "/home/bachelor/ml-carbucks/datasets/carbucks_dataset_v2"
+    dataset_splits = ["train", "val", "test"]
+
+    convert_yolo_to_coco(base_directory, dataset_splits)

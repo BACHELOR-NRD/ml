@@ -24,7 +24,11 @@ from ml_carbucks.utils.postprocessing import (
     postprocess_prediction_nms,
     postprocess_evaluation_results,
 )
-from ml_carbucks.utils.preprocessing import create_clean_loader, create_transforms
+from ml_carbucks.utils.preprocessing import (
+    create_clean_loader,
+    create_transforms,
+    preprocess_images,
+)
 from ml_carbucks.utils.result_saver import ResultSaver
 
 logger = setup_logger(__name__)
@@ -50,20 +54,6 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         torch.save(self.model.state_dict(), save_path)
         return save_path
 
-    def _preprocess_images(
-        self, images: List[np.ndarray]
-    ) -> Tuple[List[torch.Tensor], List[float]]:
-        transform = create_transforms(is_training=False, img_size=self.img_size)
-
-        preprocessed_samples = [
-            transform(image=img, bboxes=[], labels=[]) for img in images
-        ]
-        preprocessed_images = [sample["image"] for sample in preprocessed_samples]
-
-        scales = [self.img_size / max(img.shape[0], img.shape[1]) for img in images]
-
-        return preprocessed_images, scales
-
     def predict(
         self,
         images: List[np.ndarray],
@@ -73,7 +63,9 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     ) -> List[ADAPTER_PREDICTION]:
         self.model.eval()
 
-        preprocessed_images, scales = self._preprocess_images(images)
+        preprocessed_images, scales, original_sizes = preprocess_images(
+            images, img_size=self.img_size
+        )
 
         images_fasterrcnn = [img.to(self.device) for img in preprocessed_images]
 
