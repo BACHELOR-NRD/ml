@@ -10,8 +10,8 @@ class TrialParamWrapper:
 
     IMG_SIZE_OPTIONS = [
         # 256,
-        # 384,
-        512,
+        384,
+        # 512,
         # 640,
         # 768,
         # 1024,

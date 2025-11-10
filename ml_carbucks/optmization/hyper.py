@@ -142,22 +142,23 @@ def main(
 
 if __name__ == "__main__":
     classes = ["scratch", "dent", "crack"]
+    runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     main(
         adapter_list=[
             RtdetrUltralyticsAdapter(
                 classes=classes,
                 name="rtdetr",
-                project_dir=RESULTS_DIR / "optuna_nov9_ultralytics",
+                project_dir=RESULTS_DIR / f"optuna_ultralytics_{runtime}",
             ),
             EfficientDetAdapter(classes=classes),
             YoloUltralyticsAdapter(
                 classes=classes,
                 name="yolo",
-                project_dir=RESULTS_DIR / "optuna_nov9_ultralytics",
+                project_dir=RESULTS_DIR / f"optuna_ultralytics_{runtime}",
             ),
             FasterRcnnAdapter(classes=classes),
         ],
-        runtime=dt.datetime.now().strftime("%Y%m%d_%H%M%S"),
+        runtime=runtime,
         train_datasets=[
             (
                 DATA_DIR
@@ -184,7 +185,7 @@ if __name__ == "__main__":
                 / "instances_val_curated.json",
             )
         ],
-        results_dir=RESULTS_DIR / "nov9",
+        results_dir=RESULTS_DIR,
         n_trials=50,
         patience=25,
         min_percentage_improvement=0.02,
