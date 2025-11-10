@@ -1,14 +1,15 @@
-from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
-from ml_carbucks.optmization.TrialParamWrapper import TrialParamWrapper
-from ml_carbucks.optmization.hyper import logger
-
+from pathlib import Path
+from typing import Callable
 
 import optuna
 from optuna import Trial
 
+from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
+from ml_carbucks.optmization.TrialParamWrapper import TrialParamWrapper
+from ml_carbucks.utils.logger import setup_logger
 
-from pathlib import Path
-from typing import Callable
+
+logger = setup_logger(__name__)
 
 
 def create_objective(
@@ -41,8 +42,8 @@ def create_objective(
             trial.set_user_attr("params", params)
             trial.set_user_attr("metrics", metrics)
 
+            nonlocal best_score
             if score > best_score:
-                nonlocal best_score
                 best_score = score
 
                 _ = trial_adapter.save(
