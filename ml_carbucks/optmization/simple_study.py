@@ -63,7 +63,7 @@ def execute_simple_study(
 
     study = optuna.create_study(
         direction="maximize",
-        study_name=study_name,
+        study_name=f"{study_name}_{hyper_name}",
         load_if_exists=True,
         storage=f"sqlite:///{sql_path}",
     )
