@@ -93,6 +93,23 @@ Enter the virtual environment when developing locally:
 ```bash
 poetry shell
 ```
+To run scripts with shared tmux sessions, use from the root directory:
+
+```bash
+# To start in a shared tmux
+tmux -S ./tmux.sock
+
+
+# To see exisiting shared sessions
+tmux -S ./tmux.sock ls
+
+# To create a new shared session
+tmux -S ./tmux.sock new -s <session_name>
+
+# To attach to an existing shared session
+tmux -S ./tmux.sock attach -t <session_name>
+```
+
 
 ### Project layout conventions
 
