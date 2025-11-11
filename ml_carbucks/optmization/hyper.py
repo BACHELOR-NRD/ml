@@ -40,6 +40,10 @@ def main(
 ):
     results = []
     for adapter in adapter_list:
+        default_adapter_params = {**adapter.get_params()}
+        if "img_size" in default_adapter_params:
+            del default_adapter_params["img_size"]
+
         result = execute_simple_study(
             hyper_name=runtime,
             study_name=adapter.__class__.__name__,
@@ -61,7 +65,7 @@ def main(
                 "val_datasets": val_datasets,
                 "adapter": adapter.__class__.__name__,
             },
-            append_trials=[adapter.get_params()],
+            append_trials=[default_adapter_params],
         )
         results.append(result)
 
