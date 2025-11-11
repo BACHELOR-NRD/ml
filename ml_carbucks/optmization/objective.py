@@ -58,14 +58,14 @@ def create_objective(
 
             return score
         except optuna.exceptions.TrialPruned as e:
-            logger.error("Trial pruned")  # NOTE: this should be replace to logger
+            logger.error("Trial pruned")
             trial.set_user_attr("error", str(e))
+            raise
 
-            raise e
         except Exception as e:
             logger.error(f"Error in objective: {e}")
             trial.set_user_attr("error", str(e))
-            raise e
+            return -0.1
         finally:
             del trial_adapter  # type: ignore
 
