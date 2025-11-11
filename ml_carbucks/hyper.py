@@ -90,7 +90,7 @@ if __name__ == "__main__":
     runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     main(
         adapter_list=[
-            RtdetrUltralyticsAdapter(classes=classes, training_save=False),
+            # RtdetrUltralyticsAdapter(classes=classes, training_save=False),
             EfficientDetAdapter(classes=classes),
             YoloUltralyticsAdapter(classes=classes, training_save=False),
             FasterRcnnAdapter(classes=classes),
