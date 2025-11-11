@@ -40,9 +40,13 @@ def main(
 ):
     results = []
     for adapter in adapter_list:
-        default_adapter_params = {**adapter.get_params()}
-        if "img_size" in default_adapter_params:
-            del default_adapter_params["img_size"]
+
+        # NOTE: this is to see if default params can outperform hyperparams
+        # since some parameters are mock values then we exclude them
+        params = adapter.get_params()
+        default_adapter_params = {
+            k: v for k, v in params.items() if k not in {"img_size", "epochs"}
+        }
 
         result = execute_simple_study(
             hyper_name=runtime,
@@ -113,8 +117,8 @@ if __name__ == "__main__":
             )
         ],
         results_dir=RESULTS_DIR,
-        n_trials=50,
-        patience=25,
+        n_trials=30,
+        patience=15,
         min_percentage_improvement=0.02,
         optimization_timeout=8 * 3600,  # N hours
     )
