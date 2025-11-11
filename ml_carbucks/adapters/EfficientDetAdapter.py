@@ -238,16 +238,6 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         train_loader = self._create_loader(datasets, is_training=True)
 
-        parser_max_label = train_loader.dataset.parsers[0].max_label  # type: ignore
-        config_num_classes = self.model.config.num_classes
-
-        if parser_max_label != config_num_classes:
-            raise ValueError(
-                f"Number of classes in dataset ({parser_max_label}) does not match "
-                f"model config ({config_num_classes})."
-                f"Please verify that the dataset is curated (classes IDs start from 1)"
-            )
-
         optimizer = create_optimizer_v2(
             self.model,
             opt=opt,
@@ -312,6 +302,16 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             transform_fn=None,
             collate_fn=None,
         )
+
+        parser_max_label = loader.dataset.parsers[0].max_label  # type: ignore
+        config_num_classes = self.model.config.num_classes
+
+        if parser_max_label != config_num_classes:
+            raise ValueError(
+                f"Number of classes in dataset ({parser_max_label}) does not match "
+                f"model config ({config_num_classes})."
+                f"Please verify that the dataset is curated (classes IDs start from 1)"
+            )
 
         return loader
 
