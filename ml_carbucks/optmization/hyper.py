@@ -37,8 +37,9 @@ def main(
     patience: int = -1,
     min_percentage_improvement: float = 0.01,
     optimization_timeout: Optional[float] = None,
-):
+) -> pd.DataFrame:
     results = []
+    models_dir = results_dir / "optuna" / "hyper" / f"checkpoints_{runtime}"
     for adapter in adapter_list:
 
         # NOTE: this is to see if default params can outperform hyperparams
@@ -58,7 +59,7 @@ def main(
                 adapter=adapter,
                 train_datasets=train_datasets,
                 val_datasets=val_datasets,
-                results_dir=results_dir / "optuna" / "hyper" / f"checkpoints_{runtime}",
+                results_dir=models_dir,
             ),
             patience=patience,
             min_percentage_improvement=min_percentage_improvement,
@@ -71,12 +72,17 @@ def main(
             },
             append_trials=[default_adapter_params],
         )
-        results.append(result)
+
+        extended_result = result.copy()
+        extended_result["models_dir"] = str(models_dir)
+
+        results.append(extended_result)
 
     df = pd.DataFrame(results)
     aggregated_results_path = results_dir / "optuna" / f"aggregated_hyper_{runtime}.csv"
     df.to_csv(aggregated_results_path, index=False)
     logger.info(f"Aggregated results saved to {aggregated_results_path}")
+    return df
 
 
 if __name__ == "__main__":
