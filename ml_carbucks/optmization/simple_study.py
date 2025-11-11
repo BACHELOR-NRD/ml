@@ -90,6 +90,11 @@ def execute_simple_study(
         gc_after_trial=True,
     )
 
+    study_time_sum = sum(
+        trial.duration.total_seconds() if trial.duration is not None else 0
+        for trial in study.trials
+    )
+
     best_trial = None
     completed_trials = [
         trial
@@ -114,6 +119,7 @@ def execute_simple_study(
         "best_trial_number": best_trial.number,
         "study_name": study_name,
         "n_trials": len(completed_trials),
+        "total_study_time_seconds": study_time_sum,
         **metadata,
     }
 
