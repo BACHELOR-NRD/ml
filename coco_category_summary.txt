@@ -1,8 +1,0 @@
-COCO Annotation Category Summary
-====================================
-Total annotations: 4618
-
-Breakdown by category:
-- scratch: 3219 annotations (69.71%)
-- dent: 937 annotations (20.29%)
-- crack: 462 annotations (10.00%)
