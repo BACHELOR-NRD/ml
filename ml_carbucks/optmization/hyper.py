@@ -61,6 +61,7 @@ def main(
                 "val_datasets": val_datasets,
                 "adapter": adapter.__class__.__name__,
             },
+            append_trials=[adapter.get_params()],
         )
         results.append(result)
 
