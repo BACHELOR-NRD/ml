@@ -55,7 +55,7 @@ def create_objective(
                 dir=results_dir,
                 prefix=f"last_{adapter.__class__.__name__}",
             )
-
+            del trial_adapter
             return score
         except optuna.exceptions.TrialPruned as e:
             logger.error("Trial pruned")
@@ -66,7 +66,5 @@ def create_objective(
             logger.error(f"Error in objective: {e}")
             trial.set_user_attr("error", str(e))
             return -0.1
-        finally:
-            del trial_adapter  # type: ignore
 
     return objective
