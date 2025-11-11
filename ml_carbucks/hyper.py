@@ -17,7 +17,7 @@ from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter  # noqa
 from ml_carbucks.optmization.simple_study import execute_simple_study
 from ml_carbucks.optmization.objective import create_objective
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks import DATA_DIR, RESULTS_DIR
+from ml_carbucks import DATA_DIR, OPTUNA_DIR
 
 logger = setup_logger(__name__)
 
@@ -39,7 +39,7 @@ def main(
     optimization_timeout: Optional[float] = None,
 ) -> pd.DataFrame:
     results = []
-    models_dir = results_dir / "optuna" / "hyper" / f"checkpoints_{runtime}"
+    models_dir = results_dir / "hyper" / f"checkpoints_{runtime}"
     for adapter in adapter_list:
 
         # NOTE: this is to see if default params can outperform hyperparams
@@ -79,7 +79,7 @@ def main(
         results.append(extended_result)
 
     df = pd.DataFrame(results)
-    aggregated_results_path = results_dir / "optuna" / f"aggregated_hyper_{runtime}.csv"
+    aggregated_results_path = results_dir / f"aggregated_hyper_{runtime}.csv"
     df.to_csv(aggregated_results_path, index=False)
     logger.info(f"Aggregated results saved to {aggregated_results_path}")
     return df
@@ -122,7 +122,7 @@ if __name__ == "__main__":
                 / "instances_val_curated.json",
             )
         ],
-        results_dir=RESULTS_DIR,
+        results_dir=OPTUNA_DIR,
         n_trials=30,
         patience=15,
         min_percentage_improvement=0.02,
