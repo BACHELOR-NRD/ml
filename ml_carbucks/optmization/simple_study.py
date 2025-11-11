@@ -55,10 +55,10 @@ def execute_simple_study(
     if append_trials is None:
         append_trials = []
 
-    hyper_dir_path = results_dir / "optuna" / "hyper"
+    hyper_dir_path = results_dir / "hyper"
     hyper_dir_path.mkdir(parents=True, exist_ok=True)
 
-    sql_path = results_dir / "optuna" / "studies" / f"{study_name}.db"
+    sql_path = results_dir / "studies" / f"{study_name}.db"
     sql_path.parent.mkdir(parents=True, exist_ok=True)
 
     study = optuna.create_study(
