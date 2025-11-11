@@ -1,3 +1,4 @@
+import math
 import json
 from pathlib import Path
 from typing import Callable, Optional
@@ -10,6 +11,20 @@ from ml_carbucks.utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 
+def params_equal(p1, p2, tol=1e-8):
+    if p1.keys() != p2.keys():
+        return False
+    for k in p1:
+        v1, v2 = p1[k], p2[k]
+        if isinstance(v1, float) and isinstance(v2, float):
+            if not math.isclose(v1, v2, rel_tol=tol, abs_tol=tol):
+                return False
+        else:
+            if v1 != v2:
+                return False
+    return True
+
+
 def execute_simple_study(
     hyper_name: str,
     study_name: str,
@@ -20,6 +35,7 @@ def execute_simple_study(
     min_percentage_improvement: float = 0.01,
     optimization_timeout: Optional[float] = None,
     metadata: Optional[dict] = None,
+    append_trials: Optional[list[dict]] = None,
 ):
     if metadata is None:
         metadata = {}
@@ -35,6 +51,9 @@ def execute_simple_study(
             "results_dir": str(results_dir),
         }
     )
+
+    if append_trials is None:
+        append_trials = []
 
     hyper_dir_path = results_dir / "optuna" / "hyper"
     hyper_dir_path.mkdir(parents=True, exist_ok=True)
@@ -57,6 +76,11 @@ def execute_simple_study(
             patience=patience,
             min_percentage_improvement=min_percentage_improvement,
         )
+
+    for trial_params in append_trials:
+        exists = any(params_equal(t.params, trial_params) for t in study.trials)
+        if not exists:
+            study.enqueue_trial(trial_params)
 
     study.optimize(
         func=create_objective_func(),
