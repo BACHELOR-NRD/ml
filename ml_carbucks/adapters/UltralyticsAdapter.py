@@ -30,7 +30,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     weight_decay: float = 5e-4
 
     seed: int = 42
-    training_save: bool = True
+    training_save: bool = False
     verbose: bool = False
     project_dir: str | Path | None = None
     name: str | None = None
@@ -77,6 +77,8 @@ class UltralyticsAdapter(BaseDetectionAdapter):
                 }
             )
 
+        # NOTE: Saving results will be handled incorrectly (weird) if there is no val=True,
+        # this is beacuse validation will be skipped and thus no results logged.
         self.model.train(  # type: ignore
             # --- Core parameters ---
             data=data_yaml,
@@ -141,6 +143,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         results_name: str,
         visualize: Literal["every", "last", "none"] = "none",
     ) -> ADAPTER_METRICS:
+        # NOTE: fit function could be copied here with modifications to log per-epoch results
         logger.error("Debugging not implemented for UltralyticsAdapter.")
         raise NotImplementedError("Debug method is not implemented.")
 

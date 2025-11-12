@@ -39,6 +39,13 @@ def execute_simple_study(
 ):
     if metadata is None:
         metadata = {}
+    else:
+        # NOTE: it needs to be json serializable so we need to check for it
+        for key, value in metadata.items():
+            if not isinstance(value, (str, int, float, bool, list, dict)):
+                logger.warning(
+                    f"Metadata key '{key}' has non-serializable value: {value}"
+                )
 
     metadata.update(
         {
