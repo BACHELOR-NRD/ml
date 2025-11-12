@@ -62,7 +62,6 @@ def safe_div(numerator: float, denominator: float) -> float:
 
 
 def median(values: Sequence[float]) -> float:
-    print("Computing median...")
     return statistics.median(values) if values else 0.0
 
 
