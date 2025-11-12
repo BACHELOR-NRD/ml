@@ -198,24 +198,20 @@ def fuse_adapters_predictions(
     """
 
     num_images = len(adapters_predictions[0])
-    list_of_tensors_per_adapter_org = [
-        [
-            (
-                torch.cat(
-                    [
-                        p["boxes"],
-                        p["scores"].unsqueeze(1),
-                        p["labels"].unsqueeze(1).float(),
-                    ],
-                    dim=1,
-                )
-                if len(p["boxes"]) > 0
-                else torch.empty((0, 6))
-            )
-            for p in preds_per_adapter
-        ]
-        for preds_per_adapter in adapters_predictions
-    ]
+    list_of_tensors_per_adapter_org = []
+    for preds_per_adapter in adapters_predictions:
+        per_adapter_tensors: list[torch.Tensor] = []
+        for p in preds_per_adapter:
+            if len(p["boxes"]) > 0:
+                # NOTE: Move tensors to CPU to avoid device mismatch when adapters run on GPU.
+                boxes = p["boxes"].detach().cpu()
+                scores = p["scores"].detach().cpu().unsqueeze(1)
+                labels = p["labels"].detach().cpu().unsqueeze(1).float()
+                tensor = torch.cat([boxes, scores, labels], dim=1)
+            else:
+                tensor = torch.empty((0, 6))
+            per_adapter_tensors.append(tensor)
+        list_of_tensors_per_adapter_org.append(per_adapter_tensors)
 
     combined_list_of_tensors = []
     for img_idx in range(num_images):
