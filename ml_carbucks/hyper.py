@@ -66,8 +66,8 @@ def main(
             optimization_timeout=optimization_timeout,
             metadata={
                 "runtime": runtime,
-                "train_datasets": train_datasets,
-                "val_datasets": val_datasets,
+                "train_datasets": [(str(ds[0]), str(ds[1])) for ds in train_datasets],
+                "val_datasets": [(str(ds[0]), str(ds[1])) for ds in val_datasets],
                 "adapter": adapter.__class__.__name__,
             },
             append_trials=[default_adapter_params],
@@ -90,8 +90,8 @@ if __name__ == "__main__":
     runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     main(
         adapter_list=[
-            # RtdetrUltralyticsAdapter(classes=classes, training_save=False),
             EfficientDetAdapter(classes=classes),
+            RtdetrUltralyticsAdapter(classes=classes, training_save=False),
             YoloUltralyticsAdapter(classes=classes, training_save=False),
             FasterRcnnAdapter(classes=classes),
         ],
