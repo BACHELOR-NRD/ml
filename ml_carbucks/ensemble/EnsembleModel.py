@@ -41,7 +41,15 @@ class EnsembleModel:
             adapter.setup()
         return self
 
-    
+    @staticmethod
+    def _prediction_to_cpu(pred: ADAPTER_PREDICTION) -> ADAPTER_PREDICTION:
+        """Detach adapter outputs so downstream metrics stay on CPU."""
+        return {
+            "boxes": pred["boxes"].detach().cpu(),
+            "scores": pred["scores"].detach().cpu(),
+            "labels": pred["labels"].detach().cpu(),
+        }
+
     def _collect_adapter_predictions(
         self,
         datasets: List[Tuple[str | Path, str | Path]],
@@ -69,7 +77,9 @@ class EnsembleModel:
         for images, targets in tqdm(loader, desc="Ensemble loader"):
             for adapter_idx, adapter in enumerate(self.adapters):
                 preds = adapter.predict(images)
-                adapters_predictions[adapter_idx].extend(preds)
+                adapters_predictions[adapter_idx].extend(
+                    self._prediction_to_cpu(pred) for pred in preds
+                )
 
             ground_truths.extend(
                 {
@@ -131,6 +141,13 @@ class EnsembleModel:
             metric = MeanAveragePrecision()
             metric.update(adapters_predictions[adapter_idx], ground_truths)  # type: ignore
             processed = postprocess_evaluation_results(metric.compute())
+            logger.info(
+                "%s metrics -> map_50: %.3f | map_75: %.3f | map_50_95: %.3f",
+                adapter.__class__.__name__,
+                processed["map_50"],
+                processed["map_75"],
+                processed["map_50_95"]
+            )
             final_results.append(processed)
         return final_results
 
