@@ -14,7 +14,7 @@ def normalize_scores(
     preds_list: list[list[torch.Tensor]],
     method: Literal["minmax", "zscore"] = "minmax",
     trust: Optional[list[float]] = None,
-) -> list[torch.Tensor]:
+) -> list[list[torch.Tensor]]:
     """
     Normalize confidence scores of predictions from multiple adapters.
     Args:
@@ -28,8 +28,18 @@ def normalize_scores(
     if trust is None:
         trust = [1.0] * len(preds_list)
     normalized_all = []
-    for preds, t in zip(preds_list, trust):
-        flat_scores = torch.cat([p[:, 4] for p in preds], dim=0)
+    for adapter_idx, (preds, t) in enumerate(zip(preds_list, trust)):
+        valid_scores = [p[:, 4] for p in preds if p.numel() > 0]
+
+        if not valid_scores:
+            logger.debug(
+                "Adapter %d produced no predictions; skipping score normalization.",
+                adapter_idx,
+            )
+            normalized_all.append(deepcopy(preds))
+            continue
+
+        flat_scores = torch.cat(valid_scores, dim=0)
         s_min, s_max = flat_scores.min(), flat_scores.max()
         mean, std = flat_scores.mean(), flat_scores.std() + 1e-6
         normalized = deepcopy(preds)
@@ -38,13 +48,28 @@ def normalize_scores(
             if method == "minmax":
                 p[:, 4] = (p[:, 4] - s_min) / (s_max - s_min + 1e-6)
             elif method == "zscore":
-                p[:, 4] = (p[:, 4] - mean) / std
+                z = (p[:, 4] - mean) / std
+                p[:, 4] = torch.sigmoid(z)
             else:
                 raise ValueError(f"Unknown normalization method: {method}")
             p[:, 4] = p[:, 4] * t
 
         normalized_all.append(normalized)
     return normalized_all
+
+def scale_scores_with_trust(
+    preds_list: list[list[torch.Tensor]],
+    trust: list[float],
+) -> list[list[torch.Tensor]]:
+
+    """
+    tensors are [x1,y1,x2,y2,score,label] and only column 4 gets multiplied
+    """
+
+    scaled = []
+    for preds, t in zip(preds_list, trust):
+        scaled.append([p.clone() if len(p) == 0 else p.clone().mul_(torch.tensor([1,1,1,1,t,1])) for p in preds])
+    return scaled
 
 
 def weighted_boxes_fusion(
@@ -192,9 +217,21 @@ def fuse_adapters_predictions(
     iou_threshold: float,
     conf_threshold: float,
     strategy: Optional[Literal["nms", "wbf"]] = None,
+    apply_score_normalization: bool = False,
+    score_normalization_method: Literal["minmax", "zscore"] = "minmax",
+    trust_weights: Optional[list[float]] = None,
 ) -> list[ADAPTER_PREDICTION]:
     """
     Fuse per-image predictions from multiple adapters into a single list of ADAPTER_PREDICTIONs.
+    Args:
+        adapters_predictions: Per-adapter predictions organized by image.
+        max_detections: Max boxes to keep per image after fusion.
+        iou_threshold: IoU used by NMS/WBF.
+        conf_threshold: Confidence floor applied during/after fusion.
+        strategy: Fusion backend to apply (NMS, WBF, or simple stacking).
+        apply_score_normalization: Whether to normalize scores/trust-scale before fusion.
+        score_normalization_method: Normalization scheme passed to normalize_scores.
+        trust_weights: Optional per-adapter multipliers applied during normalization.
     """
 
     num_images = len(adapters_predictions[0])
@@ -213,11 +250,26 @@ def fuse_adapters_predictions(
             per_adapter_tensors.append(tensor)
         list_of_tensors_per_adapter_org.append(per_adapter_tensors)
 
+    tensors_for_fusion = list_of_tensors_per_adapter_org
+    if apply_score_normalization:
+        tensors_for_fusion = normalize_scores(
+            tensors_for_fusion,
+            method=score_normalization_method,
+        )
+
+    if trust_weights is not None:
+        if len(trust_weights) != len(tensors_for_fusion):
+            raise ValueError(f"trust_weights length {len(...)}!= num adapters {len(...)}")
+        tensors_for_fusion = scale_scores_with_trust(
+            tensors_for_fusion,
+            trust_weights
+        )
+
     combined_list_of_tensors = []
     for img_idx in range(num_images):
         combined = torch.cat(
             [
-                list_of_tensors_per_adapter_org[adapter_i][img_idx]
+                tensors_for_fusion[adapter_i][img_idx]
                 for adapter_i in range(len(adapters_predictions))
             ],
             dim=0,
