@@ -35,6 +35,10 @@ class EnsembleModel:
     loader_batch_size: int = 8
     loader_shuffle: bool = False
     loader_transforms: Optional[object] = field(default=None, repr=False)
+    fusion_apply_normalization: bool = False
+    fusion_norm_method: Literal["minmax", "zscore"] = "minmax"
+    fusion_trust_weights: Optional[list[float]] = None
+
 
     def setup(self) -> "EnsembleModel":
         for adapter in self.adapters:
@@ -181,6 +185,9 @@ class EnsembleModel:
             iou_threshold=resolved_iou,
             conf_threshold=resolved_conf,
             strategy=resolved_strategy,
+            apply_score_normalization=self.fusion_apply_normalization,
+            trust_weights=self.fusion_trust_weights,
+            score_normalization_method=self.fusion_norm_method,
         )
         return fused_predictions
 
@@ -223,6 +230,9 @@ class EnsembleModel:
             iou_threshold=resolved_iou,
             conf_threshold=resolved_conf,
             strategy=resolved_strategy,
+            apply_score_normalization=self.fusion_apply_normalization,
+            trust_weights=self.fusion_trust_weights,
+            score_normalization_method=self.fusion_norm_method,
         )
         return fused_predictions, ground_truths, adapters_predictions
 
