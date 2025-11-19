@@ -10,15 +10,17 @@ from ml_carbucks.adapters.UltralyticsAdapter import UltralyticsAdapter
 from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
 
 
-def stratified_cross_valitation(hyper_results :dict,
-                                dataset_dir:Path,
+def stratified_cross_valitation(hyper_results :dict | Path,
                                 results_dir: Path,
-                                annotations_path:Path,
+                                dataset_dir:Path = 'data/carbucks_crossval_dataset/images',
+                                annotations_path:Path = 'data/carbucks_crossval_dataset/annotations/instances_crossval.json',
                                 cv_folds: int = 5,
                                 random_state: int = 42):
     
     logger = setup_logger(__name__)
-
+    if isinstance(hyper_results, Path):
+        hyper_results = read_json(hyper_results)
+        
     study_name = hyper_results["study_name"]
     study_dir = results_dir / study_name
     study_dir.mkdir(parents=True, exist_ok=True)
@@ -40,7 +42,6 @@ def stratified_cross_valitation(hyper_results :dict,
         adapter_class = get_adapter_class(hyper_results["adapter"])
         model: BaseDetectionAdapter = adapter_class(
             classes=hyper_results['classes'],
-            weights=best_params.get("weights", "rtdetr-l.pt"),
             img_size=best_params["img_size"],
             batch_size=best_params["batch_size"],
             epochs=best_params["epochs"],
@@ -57,7 +58,6 @@ def stratified_cross_valitation(hyper_results :dict,
         model.fit(train_dataset)
         metrics = model.evaluate(val_dataset)
 
-        # Clean up temporary annotation files (optional)
         train_path = study_dir / f"fold_{fold_idx}_train.json"
         val_path = study_dir / f"fold_{fold_idx}_val.json"
         train_path.unlink()
@@ -70,6 +70,7 @@ def stratified_cross_valitation(hyper_results :dict,
 
         fold_results.append(fold_data)
 
+    logger.info("Cross-validation complete. Compiling summary statistics.")
     summary = create_summary_statistics(fold_results, study_name, cv_folds)
     summary_path = study_dir / "cv_metrics.json"
     with open(summary_path, "w") as f:
