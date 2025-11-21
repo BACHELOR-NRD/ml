@@ -13,6 +13,7 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 os.makedirs(PRODUCTS_DIR, exist_ok=True)
 os.makedirs(OPTUNA_DIR, exist_ok=True)
 
+CLASSES = ["scratch", "dent", "crack"]
 # Explicit public API for `from ml_carbucks import *` and clarity when importing names
 
 __all__ = [

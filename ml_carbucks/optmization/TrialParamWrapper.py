@@ -1,11 +1,16 @@
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import optuna
+
+from ml_carbucks.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 
 @dataclass
 class TrialParamWrapper:
+    kwargs: Optional[Dict[str, Any]] = None
     """A class that is to help the creation of the trial parameters."""
 
     IMG_SIZE_OPTIONS = [
@@ -60,6 +65,40 @@ class TrialParamWrapper:
         }
         return params
 
+    def _get_ensemble_model_params(self, trial: optuna.Trial) -> Dict[str, Any]:
+        params = {
+            "fusion_strategy": trial.suggest_categorical(
+                "fusion_strategy", ["nms", "wbf"]
+            ),
+            "fusion_conf_threshold": trial.suggest_float(
+                "fusion_conf_threshold", 0.01, 0.5
+            ),
+            "fusion_iou_threshold": trial.suggest_float(
+                "fusion_iou_threshold", 0.2, 0.8
+            ),
+            "fusion_max_detections": trial.suggest_int("fusion_max_detections", 5, 10),
+            "fusion_norm_method": trial.suggest_categorical(
+                "fusion_norm_method", ["minmax", "zscore", None]
+            ),
+        }
+
+        ensemble_size = (
+            self.kwargs.get("ensemble_size", None) if self.kwargs is not None else None
+        )
+        if ensemble_size is None:
+            logger.warning(
+                "Ensemble size not provided in kwargs; cannot suggest trust weights."
+            )
+            params["fusion_trust_weights"] = None
+        else:
+            trust_weights = []
+            for i in range(ensemble_size):
+                weight = trial.suggest_float(f"trust_weight_{i}", 0.0, 1.0)
+                trust_weights.append(weight)
+            params["fusion_trust_weights"] = trust_weights
+
+        return params
+
     def get_param(self, trial: optuna.Trial, adapter_name: str) -> Dict[str, Any]:
 
         param_pairs = [
@@ -67,6 +106,7 @@ class TrialParamWrapper:
             ("rtdetr", self._get_ultralytics_params),
             ("fasterrcnn", self._get_fasterrcnn_params),
             ("efficientdet", self._get_efficientdet_params),
+            ("ensemblemodel", self._get_ensemble_model_params),
         ]
 
         for adapter_prefix, param_func in param_pairs:
