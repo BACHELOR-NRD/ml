@@ -1,4 +1,6 @@
+import os
 import numpy as np
+import torch
 from typing_extensions import Literal
 from pathlib import Path
 from dataclasses import dataclass
@@ -161,30 +163,69 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         return save_path
 
     def save_pickled(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
-        save_path = Path(dir) / f"{prefix}model_pickled{suffix}.pkl"
+        save_path = Path(dir) / f"{prefix}model{suffix}.pkl"
         save_path.parent.mkdir(parents=True, exist_ok=True)
+
+        weights_path = Path(dir) / f"{prefix}weights{suffix}.pt"
+        self.model.save(weights_path)  # type: ignore
+
+        weights = torch.load(
+            "/home/bachelor/ml-carbucks/results/pickle2/yolo.pt", weights_only=False
+        )
+
+        os.remove(weights_path)
 
         obj = {
             "class": self.__class__.__name__,
             "params": self.get_params(),
-            "weights": self.model.model,  # NOTE: not sure if this is correct
+            "weights": weights,
         }
 
         pkl.dump(obj, open(save_path, "wb"))
 
         return save_path
 
+    @classmethod
+    def load_pickled(cls, path: str | Path) -> "BaseDetectionAdapter":
+        obj = pkl.load(open(path, "rb"))
+
+        if obj["class"] != cls.__name__:
+            raise ValueError(
+                f"Pickled adapter class mismatch: expected '{cls.__name__}', got '{obj['class']}'"
+            )
+
+        params = {
+            **obj["params"],
+            "weights": {
+                "weights": obj["weights"],
+                "path": path,
+            },
+        }
+        adapter = cls(**params)
+        return adapter
+
 
 @dataclass
 class YoloUltralyticsAdapter(UltralyticsAdapter):
-
     # --- MAIN METHODS ---
 
     def setup(self) -> "YoloUltralyticsAdapter":
         if self.weights == "DEFAULT":
             self.weights = "yolo11l.pt"
+            self.model = YOLO(self.weights)  # type: ignore
+        elif isinstance(self.weights, dict):
+            # NOTE: Lol, this is a hacky way to load weights from a pickled object but works
+            weights_actual = self.weights["weights"]
+            weights_path = Path(self.weights["path"])
 
-        self.model = YOLO(str(self.weights))
+            torch.save(
+                weights_actual, weights_path.parent / f"{weights_path.stem}_temp.pt"
+            )
+            self.model = YOLO(str(weights_path.parent / f"{weights_path.stem}_temp.pt"))  # type: ignore
+            os.remove(weights_path.parent / f"{weights_path.stem}_temp.pt")
+        else:
+            self.model = YOLO(str(self.weights))  # type: ignore
+
         self.model.to(self.device)
 
         return self
@@ -226,22 +267,6 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
 
         return all_detections
 
-    @staticmethod
-    def load_pickled(path: str | Path) -> "YoloUltralyticsAdapter":
-        obj = pkl.load(open(path, "rb"))
-
-        if obj["class"] != "YoloUltralyticsAdapter":
-            raise ValueError(
-                f"Pickled adapter class mismatch: expected 'YoloUltralyticsAdapter', got '{obj['class']}'"
-            )
-
-        params = {
-            **obj["params"],
-            "weights": obj["weights"],
-        }
-        adapter = YoloUltralyticsAdapter(**params)
-        return adapter
-
 
 @dataclass
 class RtdetrUltralyticsAdapter(UltralyticsAdapter):
@@ -249,10 +274,25 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
     # --- MAIN METHODS ---
 
     def setup(self) -> "RtdetrUltralyticsAdapter":
+        print(self.weights)
         if self.weights == "DEFAULT":
             self.weights = "rtdetr-l.pt"
+            self.model = RTDETR(self.weights)
+        elif isinstance(self.weights, dict):
+            # NOTE: Lol, this is a hacky way to load weights from a pickled object but works
+            weights_actual = self.weights["weights"]
+            weights_path = Path(self.weights["path"])
 
-        self.model = RTDETR(str(self.weights))
+            torch.save(
+                weights_actual, weights_path.parent / f"{weights_path.stem}_temp.pt"
+            )
+            self.model = RTDETR(
+                str(weights_path.parent / f"{weights_path.stem}_temp.pt")
+            )
+            os.remove(weights_path.parent / f"{weights_path.stem}_temp.pt")
+        else:
+            self.model = RTDETR(str(self.weights))
+
         self.model.to(self.device)
 
         return self
@@ -298,19 +338,3 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
             all_detections.append(prediction)
 
         return all_detections
-
-    @staticmethod
-    def load_pickled(path: str | Path) -> "RtdetrUltralyticsAdapter":
-        obj = pkl.load(open(path, "rb"))
-
-        if obj["class"] != "RtdetrUltralyticsAdapter":
-            raise ValueError(
-                f"Pickled adapter class mismatch: expected 'RtdetrUltralyticsAdapter', got '{obj['class']}'"
-            )
-
-        params = {
-            **obj["params"],
-            "weights": obj["weights"],
-        }
-        adapter = RtdetrUltralyticsAdapter(**params)
-        return adapter
