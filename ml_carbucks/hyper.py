@@ -6,7 +6,6 @@ import warnings
 
 import pandas as pd
 
-
 from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
 from ml_carbucks.adapters.UltralyticsAdapter import (  # noqa: F401
     YoloUltralyticsAdapter,
@@ -15,10 +14,10 @@ from ml_carbucks.adapters.UltralyticsAdapter import (  # noqa: F401
 from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter  # noqa: F401
 from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter  # noqa: F401
 from ml_carbucks.optmization.simple_study import execute_simple_study
-from ml_carbucks.optmization.objective import create_objective
+from ml_carbucks.optmization.hyper_objective import create_objective
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks import DATA_DIR, OPTUNA_DIR
-from ml_carbucks.utils.cross_validation import stratified_cross_valitation
+from ml_carbucks.utils.cross_validation import stratified_cross_valitation  # noqa: F401
 
 logger = setup_logger(__name__)
 
@@ -79,11 +78,11 @@ def main(
 
         results.append(extended_result)
 
-        stratified_cross_valitation(
-            hyper_results=result,               #Set the annotations_path,dataset_dir and cvfolds if needed 
-            results_dir=results_dir,
-        )
-        
+        # stratified_cross_valitation(
+        #     hyper_results=result,               #Set the annotations_path,dataset_dir and cvfolds if needed
+        #     results_dir=results_dir,
+        # )
+
     df = pd.DataFrame(results)
     aggregated_results_path = results_dir / f"aggregated_hyper_{runtime}.csv"
     df.to_csv(aggregated_results_path, index=False)
@@ -96,10 +95,10 @@ if __name__ == "__main__":
     runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     main(
         adapter_list=[
-            EfficientDetAdapter(classes=classes),
-            RtdetrUltralyticsAdapter(classes=classes, training_save=False),
-            YoloUltralyticsAdapter(classes=classes, training_save=False),
-            FasterRcnnAdapter(classes=classes),
+            EfficientDetAdapter(),
+            RtdetrUltralyticsAdapter(),
+            YoloUltralyticsAdapter(),
+            FasterRcnnAdapter(),
         ],
         runtime=runtime,
         train_datasets=[

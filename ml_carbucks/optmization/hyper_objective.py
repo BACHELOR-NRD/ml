@@ -46,19 +46,19 @@ def create_objective(
             if score > best_score:
                 best_score = score
 
-                _ = trial_adapter.save(
+                _ = trial_adapter.save_weights(
                     dir=results_dir,
                     prefix=f"best_{adapter.__class__.__name__}",
                 )
 
-            _ = trial_adapter.save(
+            _ = trial_adapter.save_weights(
                 dir=results_dir,
                 prefix=f"last_{adapter.__class__.__name__}",
             )
             del trial_adapter
             return score
         except optuna.exceptions.TrialPruned as e:
-            logger.error("Trial pruned")
+            logger.error(f"Trial {trial.number} pruned: {e}")
             trial.set_user_attr("error", str(e))
             raise
 

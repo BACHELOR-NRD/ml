@@ -36,6 +36,7 @@ def execute_simple_study(
     optimization_timeout: Optional[float] = None,
     metadata: Optional[dict] = None,
     append_trials: Optional[list[dict]] = None,
+    hyper_suffix: str = "hyper",
 ):
     if metadata is None:
         metadata = {}
@@ -62,7 +63,7 @@ def execute_simple_study(
     if append_trials is None:
         append_trials = []
 
-    hyper_dir_path = results_dir / "hyper"
+    hyper_dir_path = results_dir / hyper_suffix
     hyper_dir_path.mkdir(parents=True, exist_ok=True)
 
     sql_path = results_dir / "studies" / f"{study_name}.db"
