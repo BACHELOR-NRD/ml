@@ -1,7 +1,7 @@
 import torch
 import pytest
 
-from ml_carbucks.ensemble.merging import weighted_boxes_fusion
+from ml_carbucks.utils.postprocessing import weighted_boxes_fusion
 
 
 @pytest.fixture
