@@ -88,10 +88,8 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             **extra_args,
         )
 
-        if isinstance(weights, dict):
-            # NOTE: this needs to be verified that it works correctly
-            raise NotImplementedError("Loading from state_dict is not implemented yet.")
-            self.model.model.load_state_dict(weights)
+        if isinstance(self.weights, dict):
+            self.model.model.load_state_dict(self.weights)
 
         self.model.to(self.device)
 
@@ -355,8 +353,8 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         return save_path
 
-    @staticmethod
-    def load_pickled(path: str | Path) -> "EfficientDetAdapter":
+    @classmethod
+    def load_pickled(cls, path: str | Path) -> "EfficientDetAdapter":
         obj = pkl.load(open(path, "rb"))
 
         if obj["class"] != "EfficientDetAdapter":

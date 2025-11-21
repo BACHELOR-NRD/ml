@@ -107,9 +107,9 @@ class BaseDetectionAdapter(ABC):
         """Save pickled model to the specified path."""
         pass
 
-    @staticmethod
+    @classmethod
     @abstractmethod
-    def load_pickled(path: str | Path) -> "BaseDetectionAdapter":
+    def load_pickled(cls, path: str | Path) -> "BaseDetectionAdapter":
         """Load pickled model from the specified path."""
         pass
 

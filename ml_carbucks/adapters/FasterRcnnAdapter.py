@@ -75,7 +75,11 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             self.model.roi_heads.box_predictor = FastRCNNPredictor(
                 in_features, self.n_classes + 1  # +1 for background
             )
-        elif weights is not None and Path(weights).is_file():
+        elif (
+            weights is not None
+            and not isinstance(weights, dict)
+            and Path(weights).is_file()
+        ):
             self.model = fasterrcnn_resnet50_fpn(
                 num_classes=self.n_classes + 1
             )  # +1 for background
@@ -86,7 +90,9 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             self.model = fasterrcnn_resnet50_fpn(
                 num_classes=self.n_classes + 1
             )  # +1 for background
-            self.model.load_state_dict(weights)
+            self.model.load_state_dict(
+                weights
+            )  # NOTE: perhaps the weights need to be loaded onto correct device first?
         else:
             raise ValueError(
                 "Weights must be 'DEFAULT' or a valid path to a checkpoint."
@@ -254,7 +260,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         return save_path
 
     def save_pickled(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
-        save_path = Path(dir) / f"{prefix}model{suffix}.pth"
+        save_path = Path(dir) / f"{prefix}model{suffix}.pkl"
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
         obj = {
@@ -267,8 +273,8 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         return save_path
 
-    @staticmethod
-    def load_pickled(path: str | Path) -> "FasterRcnnAdapter":
+    @classmethod
+    def load_pickled(cls, path: str | Path) -> "FasterRcnnAdapter":
         obj = pkl.load(open(path, "rb"))
 
         if obj["class"] != "FasterRcnnAdapter":
