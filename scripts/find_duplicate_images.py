@@ -9,11 +9,15 @@ def find_duplicate_images(folder):
     hashes = {}
     duplicates = []
 
+    cnt = 0
     for root, _, files in os.walk(folder):
         for file in files:
             if file.lower().endswith(
                 (".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp")
             ):
+                cnt += 1
+                if cnt % 100 == 0:
+                    print(f"Processed {cnt} images...")
                 filepath = os.path.join(root, file)
                 try:
                     img = Image.open(filepath)

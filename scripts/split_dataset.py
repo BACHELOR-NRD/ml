@@ -3,7 +3,10 @@ import random
 
 
 def split_dataset(
-    base_dir: str, split_ratio: float = 0.2, splits: list = ["train", "val"]
+    base_dir: str,
+    split_ratio: float = 0.2,
+    splits: list = ["train", "val"],
+    limit: int = int(1e6),
 ):
     """
     This function moves all the yolo splits to train first and then moves a percentage
@@ -17,7 +20,6 @@ def split_dataset(
         img_dir_path = Path(base_dir) / "images" / split
         for img_path in img_dir_path.glob("*.jpg"):
             if split == "val":
-                files_moved += 1
                 new_img_dir_path = img_dir_path.parent / "train"
                 new_img_dir_path.mkdir(exist_ok=True)
                 img_path.rename(new_img_dir_path / img_path.name)
@@ -36,14 +38,13 @@ def split_dataset(
                 print(
                     f"Moving {label_file_path} to {new_label_dir_path / label_file_path.name}"
                 )
-            else:
-                files_not_moved += 1
 
     # move to val based on split ratio
 
     img_dir_path = Path(base_dir) / "images" / "train"
     for img_path in img_dir_path.glob("*.jpg"):
-        if random.random() < split_ratio:
+
+        if random.random() < split_ratio and files_moved < limit:
             files_moved += 1
             new_img_dir_path = img_dir_path.parent / "val"
             new_img_dir_path.mkdir(exist_ok=True)
@@ -76,6 +77,6 @@ def split_dataset(
 
 if __name__ == "__main__":
     split_dataset(
-        base_dir="/home/bachelor/datasets/car_dd_testing/",
+        base_dir="/home/bachelor/ml-carbucks/data/final_carbucks/<dsadasdasdasdasda>",
         split_ratio=0.2,
     )
