@@ -2,8 +2,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Literal, Optional, Tuple
 
-import numpy as np
 import torch
+import numpy as np
+import pickle as pkl
 from tqdm import tqdm
 from torch.nn.utils import clip_grad_norm_
 from torch.utils.data import DataLoader
@@ -33,26 +34,141 @@ from ml_carbucks.utils.result_saver import ResultSaver
 
 logger = setup_logger(__name__)
 
+FASTERRCNN_OPTIMIZER_OPTIONS = Literal["Adam", "AdamW", "RAdam", "SGD"]
+
 
 @dataclass
 class FasterRcnnAdapter(BaseDetectionAdapter):
 
-    weights: str | Path = "DEFAULT"
+    # --- HYPER PARAMETERS ---
 
     lr_backbone: float = 5e-5
     lr_head: float = 5e-4
     weight_decay_backbone: float = 1e-5
     weight_decay_head: float = 1e-4
-    optimizer: Literal["Adam", "AdamW", "RAdam", "SGD"] = "Adam"
+    optimizer: FASTERRCNN_OPTIMIZER_OPTIONS = "Adam"
     clip_gradients: Optional[float] = None
-    training_augmentations: bool = True
     momentum: float = 0.9  # Used for SGD and RMSprop
 
-    def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
-        save_path = Path(dir) / f"{prefix}model{suffix}.pth"
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(self.model.state_dict(), save_path)
-        return save_path
+    # --- SETUP PARAMETERS ---
+
+    n_classes: int = 3
+    training_augmentations: bool = True
+
+    # --- MAIN METHODS ---
+
+    def setup(self) -> "FasterRcnnAdapter":
+        logger.debug("Creating Faster R-CNN model...")
+
+        img_size = self.img_size
+
+        weights = self.weights
+
+        if weights == "DEFAULT":
+            self.model = fasterrcnn_resnet50_fpn(
+                weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT,
+                min_size=img_size,
+                max_size=img_size,
+            )
+
+            in_features = self.model.roi_heads.box_predictor.cls_score.in_features  # type: ignore
+            self.model.roi_heads.box_predictor = FastRCNNPredictor(
+                in_features, self.n_classes + 1  # +1 for background
+            )
+        elif weights is not None and Path(weights).is_file():
+            self.model = fasterrcnn_resnet50_fpn(
+                num_classes=self.n_classes + 1
+            )  # +1 for background
+            checkpoint = torch.load(weights, map_location=self.device)  # type: ignore
+            self.model.load_state_dict(checkpoint)
+        elif isinstance(weights, dict):
+            # NOTE: at this point we assume that weights is already a checkpoint dict
+            self.model = fasterrcnn_resnet50_fpn(
+                num_classes=self.n_classes + 1
+            )  # +1 for background
+            self.model.load_state_dict(weights)
+        else:
+            raise ValueError(
+                "Weights must be 'DEFAULT' or a valid path to a checkpoint."
+            )
+
+        self.model.to(self.device)
+
+        return self
+
+    def fit(self, datasets: List[Tuple[str | Path, str | Path]]) -> "FasterRcnnAdapter":
+        logger.info("Starting training...")
+
+        epochs = self.epochs
+
+        loader = self._create_loader(datasets, is_training=True)
+
+        optimizer = self._create_optimizer()
+
+        for epoch in range(1, epochs + 1):
+            logger.info(f"Epoch {epoch}/{epochs}")
+
+            _ = self.train_epoch(optimizer, loader)
+
+        return self
+
+    def train_epoch(
+        self,
+        optimizer: torch.optim.Optimizer,
+        loader: DataLoader,
+    ) -> float:
+        self.model.train()
+
+        total_loss = 0.0
+        for imgs, targets in tqdm(
+            loader, desc="Training", unit="batch", disable=not self.verbose
+        ):
+            imgs = list(img.to(self.device) for img in imgs)
+            targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
+
+            loss_dict = self.model(imgs, targets)
+            loss = sum(loss for loss in loss_dict.values())
+
+            optimizer.zero_grad()
+            loss.backward()  # type: ignore
+
+            # NOTE: Clipping gradients to avoid exploding gradients
+            if self.clip_gradients is not None:
+                clip_grad_norm_(self.model.parameters(), max_norm=self.clip_gradients)
+
+            optimizer.step()
+
+            total_loss += loss.item()  # type: ignore
+
+        return total_loss
+
+    def evaluate(
+        self, datasets: List[Tuple[str | Path, str | Path]]
+    ) -> ADAPTER_METRICS:
+        logger.info("Starting evaluation...")
+        self.model.eval()
+
+        loader = self._create_loader(datasets, is_training=False)
+
+        evaluator = MeanAveragePrecision(extended_summary=False, class_metrics=False)
+        with torch.no_grad():
+            for imgs, targets in tqdm(
+                loader, desc="Evaluating", unit="batch", disable=not self.verbose
+            ):
+                imgs = list(img.to(self.device) for img in imgs)
+                outputs = self.model(imgs)
+
+                # Move targets and outputs to CPU for metric computation
+                targets_cpu = [{k: v.cpu() for k, v in t.items()} for t in targets]
+                outputs_cpu = [{k: v.cpu() for k, v in o.items()} for o in outputs]
+
+                evaluator.update(outputs_cpu, targets_cpu)
+
+        results = evaluator.compute()
+
+        metrics = postprocess_evaluation_results(results)
+
+        return metrics
 
     def predict(
         self,
@@ -91,37 +207,84 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         return processed_predictions
 
-    def setup(self) -> "FasterRcnnAdapter":
-        logger.debug("Creating Faster R-CNN model...")
+    def debug(
+        self,
+        train_datasets: List[Tuple[str | Path, str | Path]],
+        val_datasets: List[Tuple[str | Path, str | Path]],
+        results_path: str | Path,
+        results_name: str,
+        visualize: Literal["every", "last", "none"] = "none",
+    ) -> ADAPTER_METRICS:
+        logger.info("Debugging training and evaluation loops...")
+        epochs = self.epochs
+        train_loader = self._create_loader(train_datasets, is_training=True)
+        optimizer = self._create_optimizer()
+        saver = ResultSaver(results_path, name=results_name)
 
-        img_size = self.img_size
-
-        weights = self.weights
-
-        if weights == "DEFAULT":
-            self.model = fasterrcnn_resnet50_fpn(
-                weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT,
-                min_size=img_size,
-                max_size=img_size,
+        val_metrics: Optional[ADAPTER_METRICS] = None
+        for epoch in range(1, epochs + 1):
+            logger.info(f"Debug Epoch {epoch}/{epochs}")
+            total_loss = self.train_epoch(optimizer, train_loader)
+            val_metrics = self.evaluate(val_datasets)
+            saver.save(
+                epoch=epoch,
+                loss=total_loss,
+                val_map=val_metrics["map_50_95"],
+                val_map_50=val_metrics["map_50"],
             )
-            in_features = self.model.roi_heads.box_predictor.cls_score.in_features  # type: ignore
-            self.model.roi_heads.box_predictor = FastRCNNPredictor(
-                in_features, len(self.classes) + 1  # +1 for background
+            logger.info(
+                f"Debug Epoch {epoch}/{epochs} - Loss: {total_loss}, Val MAP: {val_metrics['map_50_95']}"
             )
-        elif weights is not None and Path(weights).is_file():
-            self.model = fasterrcnn_resnet50_fpn(
-                num_classes=len(self.classes) + 1
-            )  # +1 for background
-            checkpoint = torch.load(weights, map_location=self.device)  # type: ignore
-            self.model.load_state_dict(checkpoint)
-        else:
+
+            show = False
+            if visualize == "every":
+                show = True
+            elif visualize == "last" and epoch == epochs:
+                show = True
+            saver.plot(show=show)
+
+        if val_metrics is None:
+            raise RuntimeError("Validation metrics were not computed during debugging.")
+        return val_metrics
+
+    def save_weights(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+        save_path = Path(dir) / f"{prefix}model{suffix}.pth"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self.model.state_dict(), save_path)
+        return save_path
+
+    def save_pickled(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+        save_path = Path(dir) / f"{prefix}model{suffix}.pth"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+
+        obj = {
+            "class": self.__class__.__name__,
+            "params": self.get_params(),
+            "weights": self.model.state_dict(),
+        }
+
+        pkl.dump(obj, open(save_path, "wb"))
+
+        return save_path
+
+    @staticmethod
+    def load_pickled(path: str | Path) -> "FasterRcnnAdapter":
+        obj = pkl.load(open(path, "rb"))
+
+        if obj["class"] != "FasterRcnnAdapter":
             raise ValueError(
-                "Weights must be 'DEFAULT' or a valid path to a checkpoint."
+                f"Loaded object is of class {obj['class']}, expected FasterRcnnAdapter."
             )
 
-        self.model.to(self.device)
+        params = {
+            **obj["params"],
+            "weights": obj["weights"],
+        }
 
-        return self
+        adapter = FasterRcnnAdapter(**params)
+        return adapter
+
+    # --- HELPER METHODS ---
 
     def _create_optimizer(self):
         lr1 = self.lr_backbone
@@ -176,113 +339,3 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
                 img_size=img_size,
             ),
         )
-
-    def fit(self, datasets: List[Tuple[str | Path, str | Path]]) -> "FasterRcnnAdapter":
-        logger.info("Starting training...")
-
-        epochs = self.epochs
-
-        loader = self._create_loader(datasets, is_training=True)
-
-        optimizer = self._create_optimizer()
-
-        for epoch in range(1, epochs + 1):
-            logger.info(f"Epoch {epoch}/{epochs}")
-
-            _ = self.train_epoch(optimizer, loader)
-
-        return self
-
-    def train_epoch(
-        self,
-        optimizer: torch.optim.Optimizer,
-        loader: DataLoader,
-    ) -> float:
-        self.model.train()
-
-        total_loss = 0.0
-        for imgs, targets in tqdm(loader, desc="Training", unit="batch"):
-            imgs = list(img.to(self.device) for img in imgs)
-            targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
-
-            loss_dict = self.model(imgs, targets)
-            loss = sum(loss for loss in loss_dict.values())
-
-            optimizer.zero_grad()
-            loss.backward()  # type: ignore
-
-            # NOTE: Clipping gradients to avoid exploding gradients
-            if self.clip_gradients is not None:
-                clip_grad_norm_(self.model.parameters(), max_norm=self.clip_gradients)
-
-            optimizer.step()
-
-            total_loss += loss.item()  # type: ignore
-
-        return total_loss
-
-    def debug(
-        self,
-        train_datasets: List[Tuple[str | Path, str | Path]],
-        val_datasets: List[Tuple[str | Path, str | Path]],
-        results_path: str | Path,
-        results_name: str,
-        visualize: Literal["every", "last", "none"] = "none",
-    ) -> ADAPTER_METRICS:
-        logger.info("Debugging training and evaluation loops...")
-        epochs = self.epochs
-        train_loader = self._create_loader(train_datasets, is_training=True)
-        optimizer = self._create_optimizer()
-        saver = ResultSaver(results_path, name=results_name)
-
-        val_metrics: Optional[ADAPTER_METRICS] = None
-        for epoch in range(1, epochs + 1):
-            logger.info(f"Debug Epoch {epoch}/{epochs}")
-            total_loss = self.train_epoch(optimizer, train_loader)
-            val_metrics = self.evaluate(val_datasets)
-            saver.save(
-                epoch=epoch,
-                loss=total_loss,
-                val_map=val_metrics["map_50_95"],
-                val_map_50=val_metrics["map_50"],
-            )
-            logger.info(
-                f"Debug Epoch {epoch}/{epochs} - Loss: {total_loss}, Val MAP: {val_metrics['map_50_95']}"
-            )
-
-            show = False
-            if visualize == "every":
-                show = True
-            elif visualize == "last" and epoch == epochs:
-                show = True
-            saver.plot(show=show)
-
-        if val_metrics is None:
-            raise RuntimeError("Validation metrics were not computed during debugging.")
-        return val_metrics
-
-    def evaluate(
-        self, datasets: List[Tuple[str | Path, str | Path]]
-    ) -> ADAPTER_METRICS:
-        logger.info("Starting evaluation...")
-        self.model.eval()
-
-        loader = self._create_loader(datasets, is_training=False)
-
-        evaluator = MeanAveragePrecision(extended_summary=False, class_metrics=False)
-        with torch.no_grad():
-            for imgs, targets in loader:
-                imgs = list(img.to(self.device) for img in imgs)
-                outputs = self.model(imgs)
-
-                # Move targets and outputs to CPU for metric computation
-                targets_cpu = [{k: v.cpu() for k, v in t.items()} for t in targets]
-                outputs_cpu = [{k: v.cpu() for k, v in o.items()} for o in outputs]
-
-                evaluator.update(outputs_cpu, targets_cpu)
-
-        results = evaluator.compute()
-
-        metrics = postprocess_evaluation_results(results)
-
-        return metrics

@@ -39,15 +39,19 @@ ADAPTER_DATASETS = List[Tuple[str | Path, str | Path]]
 
 @dataclass
 class BaseDetectionAdapter(ABC):
-    classes: List[str]
-    weights: str | Path
+
+    # --- HYPER PARAMETERS ---
 
     img_size: int = 256
     batch_size: int = 16
     epochs: int = 1
 
+    # --- SETUP PARAMETERS ---
+
+    weights: str | Path | dict = field(default="DEFAULT")
     device: str = field(init=False)
     model: Any = field(init=False, default=None)
+    verbose: bool = field(default=False)
 
     def __post_init__(self):
         self.device = "cuda" if self._cuda_available() else "cpu"
@@ -82,11 +86,6 @@ class BaseDetectionAdapter(ABC):
         pass
 
     @abstractmethod
-    def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
-        """Save the model weights to the specified path."""
-        pass
-
-    @abstractmethod
     def debug(
         self,
         train_datasets: ADAPTER_DATASETS,
@@ -96,6 +95,22 @@ class BaseDetectionAdapter(ABC):
         visualize: Literal["every", "last", "none"] = "none",
     ) -> ADAPTER_METRICS:
         """Debug training and evaluation loops."""
+        pass
+
+    @abstractmethod
+    def save_weights(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+        """Save the model weights to the specified path."""
+        pass
+
+    @abstractmethod
+    def save_pickled(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+        """Save pickled model to the specified path."""
+        pass
+
+    @staticmethod
+    @abstractmethod
+    def load_pickled(path: str | Path) -> "BaseDetectionAdapter":
+        """Load pickled model from the specified path."""
         pass
 
     # ------------------------

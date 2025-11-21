@@ -5,6 +5,7 @@ from typing import Dict, List, Literal, Optional, Tuple
 
 import torch
 import numpy as np
+import pickle as pkl
 from tqdm import tqdm
 from PIL import Image
 from torch.utils.data.dataloader import DataLoader
@@ -43,115 +44,199 @@ logger = setup_logger(__name__)
 @dataclass
 class EfficientDetAdapter(BaseDetectionAdapter):
 
-    weights: str | Path = ""
-    backbone: str = "tf_efficientdet_d0"
+    # --- HYPER PARAMETERS ---
 
     optimizer: str = "momentum"
     lr: float = 8e-3
     weight_decay: float = 9e-6
     confidence_threshold: float = 0.15
-    training_augmentations: bool = True
     loader: Literal["inbuild", "custom"] = "inbuild"
 
-    def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
-        save_path = Path(dir) / f"{prefix}model{suffix}.pth"
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(self.model.model.state_dict(), save_path)
-        return save_path
+    # --- SETUP PARAMETERS ---
 
-    def _preprocess_images(
-        self, images: List[np.ndarray]
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if self.loader == "inbuild":
-            return self._preprocess_images_inbuild_loader(images)
-        elif self.loader == "custom":
-            preprocessed_images, scales, original_sizes = preprocess_images(
-                images, img_size=self.img_size
+    backbone: str = "tf_efficientdet_d0"
+    training_augmentations: bool = True
+    n_classes: int = 3
+
+    # --- MAIN METHODS ---
+
+    def setup(self) -> "EfficientDetAdapter":
+        img_size = self.img_size
+
+        backbone = self.backbone
+        weights = self.weights
+
+        if weights == "DEFAULT":
+            weights = ""
+        elif isinstance(weights, dict):
+            logger.info(
+                "Weights provided as state_dict - will load after model creation."
             )
-            batch_img_tensor = torch.stack(preprocessed_images).to(self.device)
-            batch_scales = torch.tensor(scales, dtype=torch.float32, device=self.device)
-            batch_original_sizes = torch.tensor(
-                original_sizes, dtype=torch.float32, device=self.device
-            )
+            weights = ""
 
-            return batch_img_tensor, batch_scales, batch_original_sizes
-        else:
-            raise ValueError(f"Unknown loader type: {self.loader}")
-
-    def _preprocess_images_inbuild_loader(
-        self, images: List[np.ndarray]
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        input_config = resolve_input_config(self.get_params(), self.model.config)
-        fill_color = resolve_fill_color(
-            input_config["fill_color"], input_config["mean"]
+        extra_args = dict(image_size=(img_size, img_size))
+        self.model = create_model(
+            model_name=backbone,
+            bench_task="train",
+            num_classes=self.n_classes,
+            pretrained=weights == "",
+            checkpoint_path=str(weights),
+            # NOTE: we set it to True because we are using custom Mean Average Precision and it is easier that way
+            # custom anchor labeler would be good idea if the boxes had unusual sizes and aspect ratios -> worth remembering for future
+            bench_labeler=True,
+            checkpoint_ema=False,
+            **extra_args,
         )
 
-        mean = (
-            torch.tensor(input_config["mean"], device=self.device).view(3, 1, 1) * 255
-        )
-        std = torch.tensor(input_config["std"], device=self.device).view(3, 1, 1) * 255
+        if isinstance(weights, dict):
+            # NOTE: this needs to be verified that it works correctly
+            raise NotImplementedError("Loading from state_dict is not implemented yet.")
+            self.model.model.load_state_dict(weights)
 
-        transform = Compose(
-            [
-                ResizePad(
-                    target_size=self.img_size,
-                    interpolation=input_config["interpolation"],
-                    fill_color=fill_color,
-                ),
-                ImageToNumpy(),
-            ]
-        )
+        self.model.to(self.device)
 
-        batch, scales = [], []
+        return self
 
-        for img in images:
+    def fit(
+        self, datasets: List[Tuple[str | Path, str | Path]]
+    ) -> "EfficientDetAdapter":
+        logger.info("Starting training...")
+        self.model.train()
 
-            img_np, anno = transform(Image.fromarray(img), {})
-            scales.append(anno.get("img_scale", 1.0))
+        epochs = self.epochs
+        opt = self.optimizer
+        lr = self.lr
+        weight_decay = self.weight_decay
 
-            img_norm = (
-                torch.from_numpy(img_np)
-                .to(self.device, non_blocking=True)
-                .float()
-                .sub_(mean)
-                .div_(std)
-            )
-            batch.append(img_norm)
+        train_loader = self._create_loader(datasets, is_training=True)
 
-        batch_tensor = torch.stack(batch, dim=0)  # B,C,H,W
-        scales_tensor = torch.tensor(scales, dtype=torch.float32, device=self.device)
-        batch_original_sizes = torch.tensor(
-            [[img.shape[1], img.shape[0]] for img in images],
-            dtype=torch.float32,
-            device=self.device,
+        optimizer = create_optimizer_v2(
+            self.model,
+            opt=opt,
+            lr=lr,
+            weight_decay=weight_decay,
         )
 
-        return batch_tensor, scales_tensor, batch_original_sizes
+        for epoch in range(1, epochs + 1):
+            logger.info(f"Epoch {epoch}/{epochs}")
 
-    def _convert_batch(
-        self, imgs: List[torch.Tensor], targets: Dict | List[Dict]
-    ) -> Tuple[torch.Tensor, dict]:
-        if self.loader == "inbuild":
-            # NOTE: In-build loader already provides correct format
-            return imgs, targets  # type: ignore
-        elif self.loader == "custom":
-            return self._convert_batch_custom_loader(imgs, targets)  # type: ignore
-        else:
-            raise ValueError(f"Unknown loader type: {self.loader}")
+            _ = self.train_epoch(optimizer, train_loader)  # type: ignore
 
-    def _convert_batch_custom_loader(
-        self, imgs: List[torch.Tensor], targets: List[dict]
-    ) -> Tuple[torch.Tensor, dict]:
-        imgs = list(img.to(self.device) for img in imgs)
-        targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
-        imgs_tensor = torch.stack(imgs)
-        targets_dict = {
-            "bbox": torch.stack([t["boxes"] for t in targets]),
-            "cls": torch.stack([t["labels"] for t in targets]),
-            "img_size": torch.stack([t["img_size"] for t in targets]),
-            "img_scale": torch.stack([t["img_scale"] for t in targets]),
-        }
-        return imgs_tensor, targets_dict
+        return self
+
+    def train_epoch(
+        self, optimizer: torch.optim.Optimizer, loader: DataLoader
+    ) -> float:
+        self.model.train()
+
+        total_loss = 0.0
+        for imgs, targets in tqdm(
+            loader, desc="Training", unit="batch", disable=not self.verbose
+        ):
+            cimgs, ctargets = self._convert_batch(imgs, targets)
+
+            output = self.model(cimgs, ctargets)
+            loss = output["loss"]
+            total_loss += loss.item()
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        return total_loss
+
+    def evaluate(
+        self,
+        datasets: List[Tuple[str | Path, str | Path]],
+        include_default: bool = False,
+    ) -> ADAPTER_METRICS:
+        self.model.eval()
+
+        val_loader = self._create_loader(datasets, is_training=False)
+
+        default_evaluator = None
+        if include_default:
+            default_evaluator = CocoStatsEvaluator(dataset=val_loader.dataset)
+
+        evaluator = MeanAveragePrecision(extended_summary=False, class_metrics=False)
+        total_loss = 0.0
+
+        with torch.no_grad():
+            for imgs, targets in tqdm(
+                val_loader, desc="Evaluating", unit="batch", disable=not self.verbose
+            ):
+                cimgs, ctargets = self._convert_batch(imgs, targets)
+
+                output = self.model(cimgs, ctargets)
+                loss = output["loss"]
+                total_loss += loss.item()
+
+                if include_default and default_evaluator is not None:
+                    default_evaluator.add_predictions(
+                        detections=output["detections"], target=ctargets
+                    )
+
+                # NOTE:
+                # Annotations are loaded in yxyx format and they are scaled
+                # Predicitons are in xyxy format and not scaled (original size of the image)
+                # So we need to rescale the ground truth boxes to original sizes
+                # Predicitons have a lot of low confidence scores and ground_truths have a lot of -1 values that just indicate no object
+                # We need to filter them out
+                for i in range(len(imgs)):
+                    scale = ctargets["img_scale"][i]
+
+                    pred_mask = (
+                        output["detections"][i][:, 4] >= self.confidence_threshold
+                    )
+                    if pred_mask.sum() == 0:
+                        # No predcitions above the confidence threshold
+                        pred_boxes = torch.zeros((0, 4), dtype=torch.float32)
+                        pred_scores = torch.zeros((0,), dtype=torch.float32)
+                        pred_labels = torch.zeros((0,), dtype=torch.int64)
+                    else:
+                        pred_boxes = output["detections"][i][pred_mask, :4]
+                        pred_scores = output["detections"][i][pred_mask, 4]
+                        pred_labels = output["detections"][i][pred_mask, 5].long()
+
+                    gt_mask = ctargets["cls"][i] != -1
+                    if gt_mask.sum() == 0:
+                        # No ground truth boxes
+                        gt_boxes = torch.zeros((0, 4), dtype=torch.float32)
+                        gt_labels = torch.zeros((0,), dtype=torch.int64)
+                    else:
+                        gt_boxes_yxyx_raw = ctargets["bbox"][i][gt_mask]
+                        gt_boxes_xyxy = torch.zeros_like(gt_boxes_yxyx_raw)
+                        gt_boxes_xyxy[:, 0] = gt_boxes_yxyx_raw[:, 1]
+                        gt_boxes_xyxy[:, 1] = gt_boxes_yxyx_raw[:, 0]
+                        gt_boxes_xyxy[:, 2] = gt_boxes_yxyx_raw[:, 3]
+                        gt_boxes_xyxy[:, 3] = gt_boxes_yxyx_raw[:, 2]
+                        gt_boxes = gt_boxes_xyxy * scale
+                        gt_labels = ctargets["cls"][i][gt_mask].long()
+
+                    evaluator.update(
+                        preds=[
+                            {
+                                "boxes": pred_boxes.cpu(),
+                                "scores": pred_scores.cpu(),
+                                "labels": pred_labels.cpu(),
+                            }
+                        ],
+                        target=[
+                            {
+                                "boxes": gt_boxes.cpu(),
+                                "labels": gt_labels.cpu(),
+                            }
+                        ],
+                    )
+
+        results = evaluator.compute()
+        metrics = postprocess_evaluation_results(results)
+
+        if include_default and default_evaluator is not None:
+            default_results = default_evaluator.evaluate()
+            metrics["default_map_50_95"] = default_results[0]  # type: ignore
+            metrics["default_map_50"] = default_results[1]  # type: ignore
+
+        return metrics
 
     def predict(
         self,
@@ -201,56 +286,95 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         return predictions
 
-    def setup(self) -> "EfficientDetAdapter":
-        img_size = self.img_size
-
-        backbone = self.backbone
-        weights = self.weights
-
-        extra_args = dict(image_size=(img_size, img_size))
-        self.model = create_model(
-            model_name=backbone,
-            bench_task="train",
-            num_classes=len(self.classes),
-            pretrained=weights == "",
-            checkpoint_path=str(weights),
-            # NOTE: we set it to True because we are using custom Mean Average Precision and it is easier that way
-            # custom anchor labeler would be good idea if the boxes had unusual sizes and aspect ratios -> worth remembering for future
-            bench_labeler=True,
-            checkpoint_ema=False,
-            **extra_args,
-        )
-
-        self.model.to(self.device)
-
-        return self
-
-    def fit(
-        self, datasets: List[Tuple[str | Path, str | Path]]
-    ) -> "EfficientDetAdapter":
-        logger.info("Starting training...")
-        self.model.train()
+    def debug(
+        self,
+        train_datasets: List[Tuple[str | Path, str | Path]],
+        val_datasets: List[Tuple[str | Path, str | Path]],
+        results_path: str | Path,
+        results_name: str,
+        visualize: Literal["every", "last", "none"] = "none",
+    ) -> ADAPTER_METRICS:
+        logger.info("Debugging training and evaluation loops...")
 
         epochs = self.epochs
-        opt = self.optimizer
-        lr = self.lr
-        weight_decay = self.weight_decay
-
-        train_loader = self._create_loader(datasets, is_training=True)
-
+        train_loader = self._create_loader(train_datasets, is_training=True)
         optimizer = create_optimizer_v2(
             self.model,
-            opt=opt,
-            lr=lr,
-            weight_decay=weight_decay,
+            opt=self.optimizer,
+            lr=self.lr,
+            weight_decay=self.weight_decay,
         )
-
+        saver = ResultSaver(
+            path=results_path,
+            name=results_name,
+        )
+        val_metrics: Optional[ADAPTER_METRICS] = None
         for epoch in range(1, epochs + 1):
             logger.info(f"Epoch {epoch}/{epochs}")
 
-            _ = self.train_epoch(optimizer, train_loader)  # type: ignore
+            total_loss = self.train_epoch(optimizer, train_loader)  # type: ignore
+            val_metrics = self.evaluate(val_datasets)
+            saver.save(
+                epoch=epoch,
+                loss=total_loss,
+                val_map=val_metrics["map_50_95"],
+                val_map_50=val_metrics["map_50"],
+            )
+            logger.info(
+                f"Debug Epoch {epoch}/{epochs} - Loss: {total_loss}, Val MAP: {val_metrics['map_50_95']}"
+            )
 
-        return self
+            show = False
+            if visualize == "every":
+                show = True
+            elif visualize == "last" and epoch == epochs:
+                show = True
+            saver.plot(show=show)
+
+        if val_metrics is None:
+            raise RuntimeError("Validation metrics were not computed during debugging.")
+        return val_metrics
+
+    def save_weights(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+        save_path = Path(dir) / f"{prefix}model{suffix}.pth"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self.model.model.state_dict(), save_path)
+        return save_path
+
+    def save_pickled(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+        save_path = Path(dir) / f"{prefix}model{suffix}.pkl"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+
+        obj = {
+            "class": self.__class__.__name__,
+            "params": self.get_params(),
+            "weights": self.model.model.state_dict(),
+        }
+
+        pkl.dump(obj, open(save_path, "wb"))
+
+        return save_path
+
+    @staticmethod
+    def load_pickled(path: str | Path) -> "EfficientDetAdapter":
+        obj = pkl.load(open(path, "rb"))
+
+        if obj["class"] != "EfficientDetAdapter":
+            raise ValueError(
+                f"Pickled adapter class mismatch: expected 'EfficientDetAdapter', got '{obj['class']}'"
+            )
+
+        setup_params = {
+            **obj["params"],
+            "weights": obj["weights"],
+        }
+        adapter = EfficientDetAdapter(**setup_params)
+
+        return adapter
+
+    # --- HELPER METHODS ---
+
+    # Loaders
 
     def _create_loader(
         self, datasets: List[Tuple[str | Path, str | Path]], is_training: bool
@@ -334,161 +458,100 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         return loader
 
-    def train_epoch(
-        self, optimizer: torch.optim.Optimizer, loader: DataLoader
-    ) -> float:
-        self.model.train()
+    # Preprocessing
 
-        total_loss = 0.0
-        for imgs, targets in tqdm(loader):
-            cimgs, ctargets = self._convert_batch(imgs, targets)
-
-            output = self.model(cimgs, ctargets)
-            loss = output["loss"]
-            total_loss += loss.item()
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-        return total_loss
-
-    def debug(
-        self,
-        train_datasets: List[Tuple[str | Path, str | Path]],
-        val_datasets: List[Tuple[str | Path, str | Path]],
-        results_path: str | Path,
-        results_name: str,
-        visualize: Literal["every", "last", "none"] = "none",
-    ) -> ADAPTER_METRICS:
-        logger.info("Debugging training and evaluation loops...")
-
-        epochs = self.epochs
-        train_loader = self._create_loader(train_datasets, is_training=True)
-        optimizer = create_optimizer_v2(
-            self.model,
-            opt=self.optimizer,
-            lr=self.lr,
-            weight_decay=self.weight_decay,
-        )
-        saver = ResultSaver(
-            path=results_path,
-            name=results_name,
-        )
-        val_metrics: Optional[ADAPTER_METRICS] = None
-        for epoch in range(1, epochs + 1):
-            logger.info(f"Epoch {epoch}/{epochs}")
-
-            total_loss = self.train_epoch(optimizer, train_loader)  # type: ignore
-            val_metrics = self.evaluate(val_datasets)
-            saver.save(
-                epoch=epoch,
-                loss=total_loss,
-                val_map=val_metrics["map_50_95"],
-                val_map_50=val_metrics["map_50"],
+    def _preprocess_images(
+        self, images: List[np.ndarray]
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if self.loader == "inbuild":
+            return self._preprocess_images_inbuild_loader(images)
+        elif self.loader == "custom":
+            preprocessed_images, scales, original_sizes = preprocess_images(
+                images, img_size=self.img_size
             )
-            logger.info(
-                f"Debug Epoch {epoch}/{epochs} - Loss: {total_loss}, Val MAP: {val_metrics['map_50_95']}"
+            batch_img_tensor = torch.stack(preprocessed_images).to(self.device)
+            batch_scales = torch.tensor(scales, dtype=torch.float32, device=self.device)
+            batch_original_sizes = torch.tensor(
+                original_sizes, dtype=torch.float32, device=self.device
             )
 
-            show = False
-            if visualize == "every":
-                show = True
-            elif visualize == "last" and epoch == epochs:
-                show = True
-            saver.plot(show=show)
+            return batch_img_tensor, batch_scales, batch_original_sizes
+        else:
+            raise ValueError(f"Unknown loader type: {self.loader}")
 
-        if val_metrics is None:
-            raise RuntimeError("Validation metrics were not computed during debugging.")
-        return val_metrics
+    def _preprocess_images_inbuild_loader(
+        self, images: List[np.ndarray]
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        input_config = resolve_input_config(self.get_params(), self.model.config)
+        fill_color = resolve_fill_color(
+            input_config["fill_color"], input_config["mean"]
+        )
 
-    def evaluate(
-        self,
-        datasets: List[Tuple[str | Path, str | Path]],
-        include_default: bool = False,
-    ) -> ADAPTER_METRICS:
-        self.model.eval()
+        mean = (
+            torch.tensor(input_config["mean"], device=self.device).view(3, 1, 1) * 255
+        )
+        std = torch.tensor(input_config["std"], device=self.device).view(3, 1, 1) * 255
 
-        val_loader = self._create_loader(datasets, is_training=False)
+        transform = Compose(
+            [
+                ResizePad(
+                    target_size=self.img_size,
+                    interpolation=input_config["interpolation"],
+                    fill_color=fill_color,
+                ),
+                ImageToNumpy(),
+            ]
+        )
 
-        default_evaluator = None
-        if include_default:
-            default_evaluator = CocoStatsEvaluator(dataset=val_loader.dataset)
+        batch, scales = [], []
 
-        evaluator = MeanAveragePrecision(extended_summary=False, class_metrics=False)
-        total_loss = 0.0
+        for img in images:
 
-        with torch.no_grad():
-            for imgs, targets in val_loader:
-                cimgs, ctargets = self._convert_batch(imgs, targets)
+            img_np, anno = transform(Image.fromarray(img), {})
+            scales.append(anno.get("img_scale", 1.0))
 
-                output = self.model(cimgs, ctargets)
-                loss = output["loss"]
-                total_loss += loss.item()
+            img_norm = (
+                torch.from_numpy(img_np)
+                .to(self.device, non_blocking=True)
+                .float()
+                .sub_(mean)
+                .div_(std)
+            )
+            batch.append(img_norm)
 
-                if include_default and default_evaluator is not None:
-                    default_evaluator.add_predictions(
-                        detections=output["detections"], target=ctargets
-                    )
+        batch_tensor = torch.stack(batch, dim=0)  # B,C,H,W
+        scales_tensor = torch.tensor(scales, dtype=torch.float32, device=self.device)
+        batch_original_sizes = torch.tensor(
+            [[img.shape[1], img.shape[0]] for img in images],
+            dtype=torch.float32,
+            device=self.device,
+        )
 
-                # NOTE:
-                # Annotations are loaded in yxyx format and they are scaled
-                # Predicitons are in xyxy format and not scaled (original size of the image)
-                # So we need to rescale the ground truth boxes to original sizes
-                # Predicitons have a lot of low confidence scores and ground_truths have a lot of -1 values that just indicate no object
-                # We need to filter them out
-                for i in range(len(imgs)):
-                    scale = ctargets["img_scale"][i]
+        return batch_tensor, scales_tensor, batch_original_sizes
 
-                    pred_mask = (
-                        output["detections"][i][:, 4] >= self.confidence_threshold
-                    )
-                    if pred_mask.sum() == 0:
-                        # No predcitions above the confidence threshold
-                        pred_boxes = torch.zeros((0, 4), dtype=torch.float32)
-                        pred_scores = torch.zeros((0,), dtype=torch.float32)
-                        pred_labels = torch.zeros((0,), dtype=torch.int64)
-                    else:
-                        pred_boxes = output["detections"][i][pred_mask, :4]
-                        pred_scores = output["detections"][i][pred_mask, 4]
-                        pred_labels = output["detections"][i][pred_mask, 5].long()
+    # Postprocessing
 
-                    gt_mask = ctargets["cls"][i] != -1
-                    if gt_mask.sum() == 0:
-                        # No ground truth boxes
-                        gt_boxes = torch.zeros((0, 4), dtype=torch.float32)
-                        gt_labels = torch.zeros((0,), dtype=torch.int64)
-                    else:
-                        gt_boxes_yxyx_raw = ctargets["bbox"][i][gt_mask]
-                        gt_boxes_xyxy = torch.zeros_like(gt_boxes_yxyx_raw)
-                        gt_boxes_xyxy[:, 0] = gt_boxes_yxyx_raw[:, 1]
-                        gt_boxes_xyxy[:, 1] = gt_boxes_yxyx_raw[:, 0]
-                        gt_boxes_xyxy[:, 2] = gt_boxes_yxyx_raw[:, 3]
-                        gt_boxes_xyxy[:, 3] = gt_boxes_yxyx_raw[:, 2]
-                        gt_boxes = gt_boxes_xyxy * scale
-                        gt_labels = ctargets["cls"][i][gt_mask].long()
+    def _convert_batch(
+        self, imgs: List[torch.Tensor], targets: Dict | List[Dict]
+    ) -> Tuple[torch.Tensor, dict]:
+        if self.loader == "inbuild":
+            # NOTE: In-build loader already provides correct format
+            return imgs, targets  # type: ignore
+        elif self.loader == "custom":
+            return self._convert_batch_custom_loader(imgs, targets)  # type: ignore
+        else:
+            raise ValueError(f"Unknown loader type: {self.loader}")
 
-                    evaluator.update(
-                        preds=[
-                            {
-                                "boxes": pred_boxes.cpu(),
-                                "scores": pred_scores.cpu(),
-                                "labels": pred_labels.cpu(),
-                            }
-                        ],
-                        target=[
-                            {
-                                "boxes": gt_boxes.cpu(),
-                                "labels": gt_labels.cpu(),
-                            }
-                        ],
-                    )
-
-        results = evaluator.compute()
-        metrics = postprocess_evaluation_results(results)
-
-        if include_default and default_evaluator is not None:
-            default_results = default_evaluator.evaluate()
-            metrics["default_map_50_95"] = default_results[0]  # type: ignore
-            metrics["default_map_50"] = default_results[1]  # type: ignore
-
-        return metrics
+    def _convert_batch_custom_loader(
+        self, imgs: List[torch.Tensor], targets: List[dict]
+    ) -> Tuple[torch.Tensor, dict]:
+        imgs = list(img.to(self.device) for img in imgs)
+        targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
+        imgs_tensor = torch.stack(imgs)
+        targets_dict = {
+            "bbox": torch.stack([t["boxes"] for t in targets]),
+            "cls": torch.stack([t["labels"] for t in targets]),
+            "img_size": torch.stack([t["img_size"] for t in targets]),
+            "img_scale": torch.stack([t["img_scale"] for t in targets]),
+        }
+        return imgs_tensor, targets_dict
