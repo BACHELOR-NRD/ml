@@ -4,6 +4,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Tuple
 
+import pickle as pkl
 from ultralytics.models.yolo import YOLO
 from ultralytics.models.rtdetr import RTDETR
 
@@ -18,24 +19,30 @@ from ml_carbucks.utils.conversions import convert_coco_to_yolo
 
 logger = setup_logger(__name__)
 
+ULTRALYTICS_OPTIMIZER_OPTIONS = Literal[
+    "SGD", "Adam", "AdamW", "NAdam", "RAdam", "RMSProp", "auto"
+]
+
 
 @dataclass
 class UltralyticsAdapter(BaseDetectionAdapter):
 
-    optimizer: Literal["SGD", "Adam", "AdamW", "NAdam", "RAdam", "RMSProp", "auto"] = (
-        "auto"
-    )
+    # --- HYPER PARAMETERS ---
+
+    optimizer: ULTRALYTICS_OPTIMIZER_OPTIONS = "auto"
     lr: float = 1e-3
     momentum: float = 0.9
     weight_decay: float = 5e-4
 
+    # --- SETUP PARAMETERS ---
+
     seed: int = 42
     training_save: bool = False
-    verbose: bool = False
     project_dir: str | Path | None = None
     name: str | None = None
-
     training_augmentations: bool = True
+
+    # --- MAIN METHODS ---
 
     def fit(
         self, datasets: List[Tuple[str | Path, str | Path]]
@@ -44,10 +51,11 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
         img_dir, ann_file = datasets[0]
         if len(datasets) > 1:
-            logger.warning(
+            logger.error(
                 "Multiple datasets provided for training, but only the first will be used."
             )
-            logger.warning("Multi-dataset training is not yet supported.")
+            logger.error("Multi-dataset training is not yet supported.")
+            raise NotImplementedError("Multi-dataset training is not implemented.")
 
         logger.info("Converting COCO annotations to YOLO format...")
         data_yaml = convert_coco_to_yolo(str(img_dir), str(ann_file))
@@ -108,10 +116,11 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
         img_dir, ann_file = datasets[0]
         if len(datasets) > 1:
-            logger.warning(
+            logger.error(
                 "Multiple datasets provided for evaluation, but only the first will be used."
             )
-            logger.warning("Multi-dataset evaluation is not yet supported.")
+            logger.error("Multi-dataset evaluation is not yet supported.")
+            raise NotImplementedError("Multi-dataset evaluation is not implemented.")
 
         logger.info("Converting COCO annotations to YOLO format...")
         data_yaml = convert_coco_to_yolo(str(img_dir), str(ann_file))
@@ -126,11 +135,9 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
         metrics: ADAPTER_METRICS = {
             "map_50": results.results_dict["metrics/mAP50(B)"],
-            "map_75": -np.inf,  # FIXME: verify that the key is correct: results.results_dict["metrics/mAP75(B)"]
             "map_50_95": results.results_dict["metrics/mAP50-95(B)"],
-            "classes": [
-                i for i in range(1, len(self.classes) + 1)
-            ],  # FIXME: try to get class-wise metrics from Ultralytics
+            "map_75": -np.inf,  # FIXME: verify that the key is correct: results.results_dict["metrics/mAP75(B)"]
+            "classes": [],  # FIXME: needs to be added
         }
 
         return metrics
@@ -147,19 +154,36 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         logger.error("Debugging not implemented for UltralyticsAdapter.")
         raise NotImplementedError("Debug method is not implemented.")
 
-    def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+    def save_weights(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model{suffix}.pt"
         save_path.parent.mkdir(parents=True, exist_ok=True)
         self.model.save(save_path)  # type: ignore
+        return save_path
+
+    def save_pickled(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+        save_path = Path(dir) / f"{prefix}model_pickled{suffix}.pkl"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+
+        obj = {
+            "class": self.__class__.__name__,
+            "params": self.get_params(),
+            "weights": self.model.model,  # NOTE: not sure if this is correct
+        }
+
+        pkl.dump(obj, open(save_path, "wb"))
+
         return save_path
 
 
 @dataclass
 class YoloUltralyticsAdapter(UltralyticsAdapter):
 
-    weights: str | Path = "yolo11l.pt"
+    # --- MAIN METHODS ---
 
     def setup(self) -> "YoloUltralyticsAdapter":
+        if self.weights == "DEFAULT":
+            self.weights = "yolo11l.pt"
+
         self.model = YOLO(str(self.weights))
         self.model.to(self.device)
 
@@ -202,13 +226,32 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
 
         return all_detections
 
+    @staticmethod
+    def load_pickled(path: str | Path) -> "YoloUltralyticsAdapter":
+        obj = pkl.load(open(path, "rb"))
+
+        if obj["class"] != "YoloUltralyticsAdapter":
+            raise ValueError(
+                f"Pickled adapter class mismatch: expected 'YoloUltralyticsAdapter', got '{obj['class']}'"
+            )
+
+        params = {
+            **obj["params"],
+            "weights": obj["weights"],
+        }
+        adapter = YoloUltralyticsAdapter(**params)
+        return adapter
+
 
 @dataclass
 class RtdetrUltralyticsAdapter(UltralyticsAdapter):
 
-    weights: str | Path = "rtdetr-l.pt"
+    # --- MAIN METHODS ---
 
     def setup(self) -> "RtdetrUltralyticsAdapter":
+        if self.weights == "DEFAULT":
+            self.weights = "rtdetr-l.pt"
+
         self.model = RTDETR(str(self.weights))
         self.model.to(self.device)
 
@@ -255,3 +298,19 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
             all_detections.append(prediction)
 
         return all_detections
+
+    @staticmethod
+    def load_pickled(path: str | Path) -> "RtdetrUltralyticsAdapter":
+        obj = pkl.load(open(path, "rb"))
+
+        if obj["class"] != "RtdetrUltralyticsAdapter":
+            raise ValueError(
+                f"Pickled adapter class mismatch: expected 'RtdetrUltralyticsAdapter', got '{obj['class']}'"
+            )
+
+        params = {
+            **obj["params"],
+            "weights": obj["weights"],
+        }
+        adapter = RtdetrUltralyticsAdapter(**params)
+        return adapter
