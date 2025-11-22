@@ -163,10 +163,11 @@ def convert_coco_to_yolo(img_dir: str, ann_file: str) -> Path:
     elapsed_seconds = end_time - start_time
 
     logger.info(f"COCO to YOLO conversion completed in {elapsed_seconds:.2f} seconds")
-    if elapsed_seconds > 15:
-        logger.warning(
+    if elapsed_seconds > 10:
+        logger.error(
             "COCO to YOLO conversion took longer than expected. "
             "Consider optimizing this process for large datasets."
         )
+        raise RuntimeError("COCO to YOLO conversion timeout.")
 
     return yaml_path

@@ -12,6 +12,7 @@ from torchvision.models.detection.faster_rcnn import (
     FastRCNNPredictor,
     fasterrcnn_resnet50_fpn,
     FasterRCNN_ResNet50_FPN_Weights,
+    FasterRCNN_ResNet50_FPN_V2_Weights,
 )
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
@@ -62,12 +63,16 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         logger.debug("Creating Faster R-CNN model...")
 
         img_size = self.img_size
-
         weights = self.weights
 
-        if weights == "DEFAULT":
+        if weights in ("DEFAULT", "V1", "V2"):
+
+            weights_enum = FasterRCNN_ResNet50_FPN_Weights.DEFAULT
+            if weights == "V2":
+                weights_enum = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
+
             self.model = fasterrcnn_resnet50_fpn(
-                weights=FasterRCNN_ResNet50_FPN_Weights.DEFAULT,
+                weights=weights_enum,
                 min_size=img_size,
                 max_size=img_size,
             )

@@ -86,9 +86,10 @@ def execute_simple_study(
         )
 
     for trial_params in append_trials:
+        # NOTE this check is probably not needed since we use skip_if_exists=True (needs verification)
         exists = any(params_equal(t.params, trial_params) for t in study.trials)
         if not exists:
-            study.enqueue_trial(trial_params)
+            study.enqueue_trial(trial_params, skip_if_exists=True)
 
     study.optimize(
         func=create_objective_func(),
