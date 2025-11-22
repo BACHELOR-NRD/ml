@@ -272,7 +272,6 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
     # --- MAIN METHODS ---
 
     def setup(self) -> "RtdetrUltralyticsAdapter":
-        print(self.weights)
         if self.weights == "DEFAULT":
             self.weights = "rtdetr-l.pt"
             self.model = RTDETR(self.weights)

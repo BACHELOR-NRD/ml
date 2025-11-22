@@ -50,7 +50,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     optimizer: str = "momentum"
     lr: float = 8e-3
     weight_decay: float = 9e-6
-    loader: Literal["inbuild", "custom"] = "inbuild"
+    loader: Literal["inbuilt", "custom"] = "inbuilt"
 
     # --- SETUP PARAMETERS ---
 
