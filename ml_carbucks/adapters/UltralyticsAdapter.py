@@ -215,13 +215,11 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
         elif isinstance(self.weights, dict):
             # NOTE: Lol, this is a hacky way to load weights from a pickled object but works
             weights_actual = self.weights["weights"]
-            weights_path = Path(self.weights["path"])
+            weights_path = Path(f"temp_{self.weights['path'].stem}.pt")
 
-            torch.save(
-                weights_actual, weights_path.parent / f"{weights_path.stem}_temp.pt"
-            )
-            self.model = YOLO(str(weights_path.parent / f"{weights_path.stem}_temp.pt"))  # type: ignore
-            os.remove(weights_path.parent / f"{weights_path.stem}_temp.pt")
+            torch.save(weights_actual, weights_path)
+            self.model = YOLO(str(weights_path))  # type: ignore
+            os.remove(weights_path)
         else:
             self.model = YOLO(str(self.weights))  # type: ignore
 
@@ -279,15 +277,11 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
         elif isinstance(self.weights, dict):
             # NOTE: Lol, this is a hacky way to load weights from a pickled object but works
             weights_actual = self.weights["weights"]
-            weights_path = Path(self.weights["path"])
+            weights_path = Path(f"temp_{self.weights['path'].stem}.pt")
 
-            torch.save(
-                weights_actual, weights_path.parent / f"{weights_path.stem}_temp.pt"
-            )
-            self.model = RTDETR(
-                str(weights_path.parent / f"{weights_path.stem}_temp.pt")
-            )
-            os.remove(weights_path.parent / f"{weights_path.stem}_temp.pt")
+            torch.save(weights_actual, weights_path)
+            self.model = RTDETR(str(weights_path))
+            os.remove(weights_path)
         else:
             self.model = RTDETR(str(self.weights))
 

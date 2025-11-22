@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from typing_extensions import Literal
 
@@ -15,9 +15,13 @@ class TrialParamWrapper:
     ensemble_size: Optional[int] = None
     """A class that is to help the creation of the trial parameters."""
 
-    V1_IMG_SIZE_OPTIONS: List[int] = [384]  # NOTE: smaller sizes for faster experiments
+    V1_IMG_SIZE_OPTIONS: List[int] = field(
+        default_factory=lambda: [384]
+    )  # NOTE: smaller sizes for faster experiments
 
-    V2_IMG_SIZE_OPTIONS: List[int] = [1024]
+    V2_IMG_SIZE_OPTIONS: List[int] = field(
+        default_factory=lambda: [1024]
+    )  # NOTE: bigger sizes for better accuracy
 
     def _get_yolo_params(self, trial: optuna.Trial) -> Dict[str, Any]:
 

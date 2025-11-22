@@ -44,14 +44,14 @@ def load_adapters_from_hyperopt(hyper_runtime: str) -> List[BaseDetectionAdapter
     adapters: List[BaseDetectionAdapter] = []
 
     for file in hyperopt_models_dir.glob("best_pickled_*_model.pkl"):
-        try:
-            for adapter_class in possible_adapter_classes:
+        for adapter_class in possible_adapter_classes:
+            try:
                 adapter = adapter_class.load_pickled(file)
                 adapters.append(adapter)
                 logger.info(f"Loaded adapter from {file}")
                 break
-        except Exception:
-            pass
+            except ValueError:
+                pass
 
     return adapters
 

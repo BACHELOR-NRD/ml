@@ -19,7 +19,10 @@ from ml_carbucks.utils.ensemble import (
     fuse_adapters_predictions,
 )
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks.utils.postprocessing import postprocess_evaluation_results
+from ml_carbucks.utils.postprocessing import (
+    convert_pred2eval,
+    postprocess_evaluation_results,
+)
 from ml_carbucks.utils.preprocessing import create_clean_loader
 
 logger = setup_logger(__name__)
@@ -58,8 +61,12 @@ def create_objective(
                 distributions=distributions,
             )
 
+            processed_predictions = [
+                convert_pred2eval(pred) for pred in fused_predictions
+            ]
+
             metric = MeanAveragePrecision()
-            metric.update(fused_predictions, ground_truths)  # type: ignore
+            metric.update(processed_predictions, ground_truths)  # type: ignore
             processed = postprocess_evaluation_results(metric.compute())
 
             score = processed["map_50"]
@@ -148,14 +155,14 @@ def create_ensembling_opt_prestep(
                         {
                             "boxes": pred["boxes"].detach().cpu(),
                             "scores": pred["scores"].detach().cpu(),
-                            "labels": pred["labels"].detach().cpu(),
+                            "labels": pred["labels"].detach().cpu().long(),
                         }
                         for pred in preds
                     ]
                     eval_gts = [
                         {
                             "boxes": target["boxes"].detach().cpu(),
-                            "labels": target["labels"].detach().cpu(),
+                            "labels": target["labels"].detach().cpu().long(),
                         }
                         for target in targets
                     ]

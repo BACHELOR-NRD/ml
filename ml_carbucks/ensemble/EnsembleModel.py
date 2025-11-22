@@ -18,7 +18,10 @@ from ml_carbucks.utils.ensemble import (
     fuse_adapters_predictions,
 )
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks.utils.postprocessing import postprocess_evaluation_results
+from ml_carbucks.utils.postprocessing import (
+    convert_pred2eval,
+    postprocess_evaluation_results,
+)
 from ml_carbucks.utils.preprocessing import create_clean_loader
 
 logger = setup_logger(__name__)
@@ -132,7 +135,10 @@ class EnsembleModel(BaseDetectionAdapter):
             score_normalization_method=self.fusion_norm_method,
             distributions=self.distributions,
         )
-        return fused_predictions
+        processed_predictions: List[ADAPTER_PREDICTION] = []
+        for pred in fused_predictions:
+            processed_predictions.append(convert_pred2eval(pred))
+        return processed_predictions
 
     def debug(
         self,
