@@ -17,6 +17,7 @@ from effdet.data.transforms import ResizePad, ImageToNumpy, Compose
 from timm.optim._optim_factory import create_optimizer_v2
 
 from ml_carbucks.utils.postprocessing import (
+    convert_pred2eval,
     postprocess_prediction_nms,
     postprocess_evaluation_results,
 )
@@ -49,7 +50,6 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     optimizer: str = "momentum"
     lr: float = 8e-3
     weight_decay: float = 9e-6
-    confidence_threshold: float = 0.15
     loader: Literal["inbuild", "custom"] = "inbuild"
 
     # --- SETUP PARAMETERS ---
@@ -182,9 +182,8 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                 for i in range(len(imgs)):
                     scale = ctargets["img_scale"][i]
 
-                    pred_mask = (
-                        output["detections"][i][:, 4] >= self.confidence_threshold
-                    )
+                    # NOTE: 0.0 is an intentional artifact here because filtering is done in postprocess_prediction_nms
+                    pred_mask = output["detections"][i][:, 4] >= 0.0
                     if pred_mask.sum() == 0:
                         # No predcitions above the confidence threshold
                         pred_boxes = torch.zeros((0, 4), dtype=torch.float32)
@@ -210,18 +209,22 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                         gt_boxes = gt_boxes_xyxy * scale
                         gt_labels = ctargets["cls"][i][gt_mask].long()
 
+                    processed_pred = postprocess_prediction_nms(
+                        pred_boxes,
+                        pred_scores,
+                        pred_labels,
+                        # NOTE: those values are hardcoded for evaluation but could be parameterized if needed
+                        conf_threshold=0.02,
+                        iou_threshold=0.7,
+                        max_detections=300,
+                    )
+
                     evaluator.update(
-                        preds=[
-                            {
-                                "boxes": pred_boxes.cpu(),
-                                "scores": pred_scores.cpu(),
-                                "labels": pred_labels.cpu(),
-                            }
-                        ],
+                        preds=[convert_pred2eval(processed_pred)],  # type: ignore
                         target=[
                             {
-                                "boxes": gt_boxes.cpu(),
-                                "labels": gt_labels.cpu(),
+                                "boxes": gt_boxes.clone().detach().cpu(),
+                                "labels": gt_labels.clone().detach().cpu().long(),
                             }
                         ],
                     )

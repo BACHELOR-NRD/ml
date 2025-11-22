@@ -93,13 +93,13 @@ def main(
 if __name__ == "__main__":
 
     runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    runtime = "final_carbucks_data_demo"
+    runtime = "standard_carbucks"
     main(
         adapter_list=[
             EfficientDetAdapter(),
-            RtdetrUltralyticsAdapter(),
-            YoloUltralyticsAdapter(),
             FasterRcnnAdapter(),
+            YoloUltralyticsAdapter(),
+            RtdetrUltralyticsAdapter(),
         ],
         runtime=runtime,
         train_datasets=[
@@ -121,5 +121,5 @@ if __name__ == "__main__":
         n_trials=40,
         patience=15,
         min_percentage_improvement=0.01,
-        optimization_timeout=6 * 3600,  # N hours
+        optimization_timeout=4 * 3600,  # N hours
     )
