@@ -305,6 +305,12 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             "weights": obj["weights"],
         }
 
+        # NOTE: this is for backward compatibility with older pickled models
+        if "lr_backbone" in params:
+            del params["lr_backbone"]
+        if "weight_decay_backbone" in params:
+            del params["weight_decay_backbone"]
+
         adapter = FasterRcnnAdapter(**params)
         return adapter
 

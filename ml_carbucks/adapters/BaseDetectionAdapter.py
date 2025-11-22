@@ -1,6 +1,15 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, TypedDict, Required
+from typing import (
+    Any,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    TypedDict,
+    Required,
+)
 from dataclasses import dataclass, field
 import numpy as np
 
@@ -48,15 +57,15 @@ class BaseDetectionAdapter(ABC):
 
     # --- SETUP PARAMETERS ---
 
-    weights: str | Path | dict = field(default="DEFAULT")
+    weights: str | Path | dict = field(default="DEFAULT", repr=False)
     device: str = field(init=False)
-    model: Any = field(init=False, default=None)
+    model: Any = field(init=False, default=None, repr=False)
     verbose: bool = field(default=False)
 
     def __post_init__(self):
         self.device = "cuda" if self._cuda_available() else "cpu"
 
-    # ------------------------
+    # --- MAIN METHODS ---
 
     @abstractmethod
     def setup(self) -> "BaseDetectionAdapter":
@@ -113,7 +122,7 @@ class BaseDetectionAdapter(ABC):
         """Load pickled model from the specified path."""
         pass
 
-    # ------------------------
+    # --- HELPER METHODS ---
 
     @staticmethod
     def _cuda_available() -> bool:

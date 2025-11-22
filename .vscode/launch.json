@@ -50,7 +50,7 @@
             "name": "Ensemble Model",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/ml_carbucks/ensemble/EnsembleModel.py",
+            "program": "${workspaceFolder}/ml_carbucks/ensemble.py",
             "console": "internalConsole",
             "justMyCode": false
         },
