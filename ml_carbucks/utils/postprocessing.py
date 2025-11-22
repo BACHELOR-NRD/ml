@@ -8,12 +8,12 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
 )
 
 
-def prediction_to_cpu(pred: ADAPTER_PREDICTION) -> ADAPTER_PREDICTION:
+def convert_pred2eval(pred: ADAPTER_PREDICTION) -> ADAPTER_PREDICTION:
     """Detach adapter outputs so downstream metrics stay on CPU."""
     return {
-        "boxes": pred["boxes"].detach().cpu(),
-        "scores": pred["scores"].detach().cpu(),
-        "labels": pred["labels"].detach().cpu(),
+        "boxes": pred["boxes"].clone().detach().cpu(),
+        "scores": pred["scores"].clone().detach().cpu(),
+        "labels": pred["labels"].clone().detach().cpu().long(),
     }
 
 

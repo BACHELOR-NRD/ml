@@ -22,6 +22,7 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
 )
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.postprocessing import (
+    convert_pred2eval,
     postprocess_prediction_nms,
     postprocess_evaluation_results,
 )
@@ -168,7 +169,25 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
                 targets_cpu = [{k: v.cpu() for k, v in t.items()} for t in targets]
                 outputs_cpu = [{k: v.cpu() for k, v in o.items()} for o in outputs]
 
-                evaluator.update(outputs_cpu, targets_cpu)
+                predictions_processed = []
+                for output in outputs_cpu:
+                    boxes = output["boxes"]
+                    scores = output["scores"]
+                    labels = output["labels"]
+
+                    processed_pred = postprocess_prediction_nms(
+                        boxes,
+                        scores,
+                        labels,
+                        # NOTE: those values are hardcoded for evaluation but could be parameterized if needed
+                        conf_threshold=0.02,
+                        iou_threshold=0.7,
+                        max_detections=300,
+                    )
+
+                    predictions_processed.append(convert_pred2eval(processed_pred))
+
+                evaluator.update(predictions_processed, targets_cpu)
 
         results = evaluator.compute()
 
