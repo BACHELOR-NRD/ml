@@ -114,13 +114,13 @@ if __name__ == "__main__":
     ]
     results_dir = OPTUNA_DIR
 
-    # NOTE: this runs broad hyperparameter optimization with small image_resolution
+    # NOTE: defult params are setup here
     main(
         adapter_list=[
-            EfficientDetAdapter(),
-            FasterRcnnAdapter(),
-            YoloUltralyticsAdapter(),
-            RtdetrUltralyticsAdapter(),
+            EfficientDetAdapter(weights="tf_efficientdet_d5"),
+            FasterRcnnAdapter(weights="V2"),
+            YoloUltralyticsAdapter(weights="yolo11x.pt"),
+            RtdetrUltralyticsAdapter(weights="rtdetr-x.pt"),
         ],
         runtime=runtime,
         train_datasets=train_datasets,
