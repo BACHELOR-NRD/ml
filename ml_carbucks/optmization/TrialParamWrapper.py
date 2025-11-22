@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
+from typing_extensions import Literal
 
 import optuna
 
@@ -10,56 +11,122 @@ logger = setup_logger(__name__)
 
 @dataclass
 class TrialParamWrapper:
-    kwargs: Optional[Dict[str, Any]] = None
+    version: Literal["v1", "v2"] = "v1"
+    ensemble_size: Optional[int] = None
     """A class that is to help the creation of the trial parameters."""
 
-    IMG_SIZE_OPTIONS = [
-        # 256,
-        384,
-        # 512,
-        # 640,
-        # 768,
-        # 1024,
-    ]
+    V1_IMG_SIZE_OPTIONS: List[int] = [384]  # NOTE: smaller sizes for faster experiments
+
+    V2_IMG_SIZE_OPTIONS: List[int] = [1024]
 
     def _get_ultralytics_params(self, trial: optuna.Trial) -> Dict[str, Any]:
-        params = {
-            "img_size": trial.suggest_categorical("img_size", self.IMG_SIZE_OPTIONS),
-            "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
-            "epochs": trial.suggest_int("epochs", 10, 30),
+
+        params: Dict[str, Any] = {
             "lr": trial.suggest_float("lr", 1e-4, 5e-3, log=True),
-            "momentum": trial.suggest_float("momentum", 0.3, 0.99),
             "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
-            "optimizer": trial.suggest_categorical("optimizer", ["NAdam", "AdamW"]),
         }
+        if self.version == "v1":
+            params.update(
+                {
+                    "epochs": trial.suggest_int("epochs", 10, 30),
+                    "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
+                    "img_size": trial.suggest_categorical(
+                        "img_size", self.V1_IMG_SIZE_OPTIONS
+                    ),
+                    "momentum": trial.suggest_float("momentum", 0.3, 0.99),
+                    "optimizer": trial.suggest_categorical(
+                        "optimizer", ["Adam", "AdamW"]
+                    ),
+                }
+            )
+        if self.version == "v2":
+            params.update(
+                {
+                    "epochs": trial.suggest_int("epochs", 20, 60),
+                    "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
+                    "img_size": trial.suggest_categorical(
+                        "img_size", self.V2_IMG_SIZE_OPTIONS
+                    ),
+                    "momentum": trial.suggest_float("momentum", 0.3, 0.99),
+                    "optimizer": trial.suggest_categorical(
+                        "optimizer", ["Adam", "AdamW"]
+                    ),
+                }
+            )
         return params
 
     def _get_fasterrcnn_params(self, trial: optuna.Trial) -> Dict[str, Any]:
-        params = {
-            "img_size": trial.suggest_categorical("img_size", self.IMG_SIZE_OPTIONS),
-            "batch_size": trial.suggest_categorical("batch_size", [4, 8, 16]),
-            "epochs": trial.suggest_int("epochs", 10, 30),
-            "lr_backbone": trial.suggest_float("lr_backbone", 1e-5, 5e-4, log=True),
+        params: Dict[str, Any] = {
             "lr_head": trial.suggest_float("lr_head", 5e-5, 3e-3, log=True),
-            "weight_decay_backbone": trial.suggest_float(
-                "weight_decay_backbone", 1e-6, 1e-3, log=True
-            ),
             "weight_decay_head": trial.suggest_float(
                 "weight_decay_head", 1e-5, 1e-3, log=True
             ),
         }
+
+        # "epochs": trial.suggest_int("epochs", 10, 30),
+        if self.version == "v1":
+            params.update(
+                {
+                    "epochs": trial.suggest_int("epochs", 10, 30),
+                    "img_size": trial.suggest_categorical(
+                        "img_size", self.V1_IMG_SIZE_OPTIONS
+                    ),
+                    "batch_size": trial.suggest_categorical("batch_size", [4, 8, 16]),
+                    "optimizer": trial.suggest_categorical(
+                        "optimizer", ["SGD", "AdamW"]
+                    ),
+                }
+            )
+        if self.version == "v2":
+            params.update(
+                {
+                    "epochs": trial.suggest_int("epochs", 20, 60),
+                    "img_size": trial.suggest_categorical(
+                        "img_size", self.V2_IMG_SIZE_OPTIONS
+                    ),
+                    "batch_size": trial.suggest_categorical("batch_size", [4, 8, 16]),
+                    "optimizer": trial.suggest_categorical(
+                        "optimizer", ["SGD", "AdamW"]
+                    ),
+                }
+            )
+
         return params
 
     def _get_efficientdet_params(self, trial: optuna.Trial) -> Dict[str, Any]:
-        params = {
-            "img_size": trial.suggest_categorical("img_size", self.IMG_SIZE_OPTIONS),
-            "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
-            "epochs": trial.suggest_int("epochs", 10, 30),
-            "optimizer": trial.suggest_categorical("optimizer", ["momentum", "adam"]),
+        params: Dict[str, Any] = {
             "lr": trial.suggest_float("lr", 1e-4, 1e-2, log=True),
             "weight_decay": trial.suggest_float("weight_decay", 5e-6, 1e-2, log=True),
-            "loader": trial.suggest_categorical("loader", ["inbuild", "custom"]),
         }
+
+        if self.version == "v1":
+            params.update(
+                {
+                    "epochs": trial.suggest_int("epochs", 10, 30),
+                    "img_size": trial.suggest_categorical(
+                        "img_size", self.V1_IMG_SIZE_OPTIONS
+                    ),
+                    "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
+                    "optimizer": trial.suggest_categorical(
+                        "optimizer", ["momentum", "adam"]
+                    ),
+                }
+            )
+
+        if self.version == "v2":
+            params.update(
+                {
+                    "epochs": trial.suggest_int("epochs", 20, 60),
+                    "img_size": trial.suggest_categorical(
+                        "img_size", self.V2_IMG_SIZE_OPTIONS
+                    ),
+                    "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
+                    "optimizer": trial.suggest_categorical(
+                        "optimizer", ["momentum", "adam"]
+                    ),
+                }
+            )
+
         return params
 
     def _get_ensemble_model_params(self, trial: optuna.Trial) -> Dict[str, Any]:
@@ -79,24 +146,25 @@ class TrialParamWrapper:
             ),
         }
 
-        ensemble_size = (
-            self.kwargs.get("ensemble_size", None) if self.kwargs is not None else None
-        )
-        if ensemble_size is None:
+        if self.ensemble_size is None:
             logger.warning(
                 "Ensemble size not provided in kwargs; cannot suggest trust weights."
             )
             params["fusion_trust_weights"] = None
         else:
             trust_weights = []
-            for i in range(ensemble_size):
+            for i in range(self.ensemble_size):
                 weight = trial.suggest_float(f"trust_weight_{i}", 0.0, 1.0)
                 trust_weights.append(weight)
             params["fusion_trust_weights"] = trust_weights
 
         return params
 
-    def get_param(self, trial: optuna.Trial, adapter_name: str) -> Dict[str, Any]:
+    def get_param(
+        self,
+        trial: optuna.Trial,
+        adapter_name: str,
+    ) -> Dict[str, Any]:
 
         param_pairs = [
             ("yolo", self._get_ultralytics_params),

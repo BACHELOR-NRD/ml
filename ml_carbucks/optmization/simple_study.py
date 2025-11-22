@@ -131,7 +131,8 @@ def execute_simple_study(
         **metadata,
     }
 
-    with open(hyper_dir_path / f"results_{hyper_name}_{study_name}.json", "w") as f:
+    (hyper_dir_path / hyper_name).mkdir(parents=True, exist_ok=True)
+    with open(hyper_dir_path / hyper_name / f"results_{study_name}.json", "w") as f:
         json.dump(hyper_results, f)
 
     return hyper_results

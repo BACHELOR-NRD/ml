@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Literal
 
 import optuna
 from optuna import Trial
@@ -17,6 +17,7 @@ def create_objective(
     train_datasets: list[tuple],
     val_datasets: list[tuple],
     results_dir: Path,
+    param_wrapper_version: Literal["v1", "v2"],
 ) -> Callable:
 
     best_score = -float("inf")
@@ -24,7 +25,9 @@ def create_objective(
     def objective(trial: Trial) -> float:
 
         try:
-            params = TrialParamWrapper().get_param(trial, adapter.__class__.__name__)
+            params = TrialParamWrapper(version=param_wrapper_version).get_param(
+                trial, adapter.__class__.__name__
+            )
 
             trial_adapter = adapter.clone()
             trial_adapter = trial_adapter.set_params(params)
