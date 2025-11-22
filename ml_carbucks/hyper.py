@@ -16,7 +16,8 @@ from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter  # noqa
 from ml_carbucks.optmization.simple_study import execute_simple_study
 from ml_carbucks.optmization.hyper_objective import create_objective
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks import DATA_DIR, OPTUNA_DIR
+from ml_carbucks import OPTUNA_DIR
+from ml_carbucks.utils.DatasetsPathManager import DatasetsPathManager
 from ml_carbucks.utils.cross_validation import stratified_cross_valitation  # noqa: F401
 
 logger = setup_logger(__name__)
@@ -75,6 +76,8 @@ def main(
                 "train_datasets": [(str(ds[0]), str(ds[1])) for ds in train_datasets],
                 "val_datasets": [(str(ds[0]), str(ds[1])) for ds in val_datasets],
                 "adapter": adapter.__class__.__name__,
+                "plot_with_debug": plot_with_debug,
+                "param_wrapper_version": param_wrapper_version,
             },
             append_trials=[default_adapter_params],
         )
@@ -98,21 +101,9 @@ def main(
 
 if __name__ == "__main__":
 
+    # NOTE: semantic names for each "run"
     runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    runtime += "big_resolution_carbucks"
-    train_datasets = [
-        (
-            DATA_DIR / "final_carbucks" / "standard" / "images" / "train",
-            DATA_DIR / "final_carbucks" / "standard" / "instances_train_curated.json",
-        ),
-    ]
-    val_datasets = [
-        (
-            DATA_DIR / "final_carbucks" / "standard" / "images" / "val",
-            DATA_DIR / "final_carbucks" / "standard" / "instances_val_curated.json",
-        )
-    ]
-    results_dir = OPTUNA_DIR
+    runtime_suffix = "big_resolution_carbucks"
 
     # NOTE: defult params are setup here
     main(
@@ -122,9 +113,9 @@ if __name__ == "__main__":
             YoloUltralyticsAdapter(weights="yolo11x.pt"),
             RtdetrUltralyticsAdapter(weights="rtdetr-x.pt"),
         ],
-        runtime=runtime,
-        train_datasets=train_datasets,
-        val_datasets=val_datasets,
+        runtime=runtime + "_" + runtime_suffix,
+        train_datasets=DatasetsPathManager.CARBUCKS_TRAIN_STANDARD,
+        val_datasets=DatasetsPathManager.CARBUCKS_VAL_STANDARD,
         param_wrapper_version="v2",  # NOTE: v2 will use bigger image sizes and epochs so it takes longer
         plot_with_debug=True,
         results_dir=OPTUNA_DIR,
