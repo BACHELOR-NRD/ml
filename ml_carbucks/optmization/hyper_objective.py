@@ -18,6 +18,7 @@ def create_objective(
     val_datasets: list[tuple],
     results_dir: Path,
     param_wrapper_version: Literal["v1", "v2"],
+    plot_with_debug: bool = False,
 ) -> Callable:
 
     best_score = -float("inf")
@@ -32,9 +33,24 @@ def create_objective(
             trial_adapter = adapter.clone()
             trial_adapter = trial_adapter.set_params(params)
             trial_adapter.setup()
-            trial_adapter.fit(datasets=train_datasets)
 
-            metrics = trial_adapter.evaluate(datasets=val_datasets)
+            if plot_with_debug:
+                try:
+                    metrics = trial_adapter.debug(
+                        train_datasets=train_datasets,
+                        val_datasets=val_datasets,
+                        results_path=results_dir,
+                        results_name=f"debug_{adapter.__class__.__name__}_trial_{trial.number}",
+                    )
+                except NotImplementedError:
+                    logger.info(
+                        f"Debug not implemented for {adapter.__class__.__name__}, proceeding with normal fit/evaluate."
+                    )
+                    trial_adapter.fit(datasets=train_datasets)
+                    metrics = trial_adapter.evaluate(datasets=val_datasets)
+            else:
+                trial_adapter.fit(datasets=train_datasets)
+                metrics = trial_adapter.evaluate(datasets=val_datasets)
 
             score = metrics["map_50"]
 

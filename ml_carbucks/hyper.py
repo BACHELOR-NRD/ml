@@ -34,6 +34,7 @@ def main(
     train_datasets: list[tuple],
     val_datasets: list[tuple],
     param_wrapper_version: Literal["v1", "v2"],
+    plot_with_debug: bool = False,
     n_trials: int = 25,
     patience: int = -1,
     min_percentage_improvement: float = 0.01,
@@ -64,6 +65,7 @@ def main(
                 val_datasets=val_datasets,
                 results_dir=models_dir,
                 param_wrapper_version=param_wrapper_version,
+                plot_with_debug=plot_with_debug,
             ),
             patience=patience,
             min_percentage_improvement=min_percentage_improvement,
@@ -124,6 +126,7 @@ if __name__ == "__main__":
         train_datasets=train_datasets,
         val_datasets=val_datasets,
         param_wrapper_version="v2",  # NOTE: v2 will use bigger image sizes and epochs so it takes longer
+        plot_with_debug=True,
         results_dir=OPTUNA_DIR,
         n_trials=1,
         patience=15,
