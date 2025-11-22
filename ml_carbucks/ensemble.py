@@ -1,12 +1,11 @@
 import datetime as dt
-from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List
+from functools import partial
+from typing import Any, Dict, List, Type
 
 import pandas as pd
-import pickle as pkl
 
-from ml_carbucks import DATA_DIR, OPTUNA_DIR
+from ml_carbucks import OPTUNA_DIR
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_DATASETS,
     BaseDetectionAdapter,
@@ -16,17 +15,45 @@ from ml_carbucks.adapters.UltralyticsAdapter import (  # noqa: F401
     RtdetrUltralyticsAdapter,
 )
 from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter  # noqa: F401
-from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter
-from ml_carbucks.optmization.ensemble_objective import create_objective
+from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter  # noqa: F401
 from ml_carbucks.ensemble.EnsembleModel import EnsembleModel
+from ml_carbucks.optmization.ensemble_objective import create_objective
 from ml_carbucks.optmization.ensemble_objective import create_ensembling_opt_prestep
 from ml_carbucks.optmization.simple_study import execute_simple_study
-from ml_carbucks.utils.ensemble import (
-    ScoreDistribution,
-)
+from ml_carbucks.utils.DatasetsPathManager import DatasetsPathManager
+from ml_carbucks.utils.ensemble import ScoreDistribution
 from ml_carbucks.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+
+def load_adapters_from_hyperopt(hyper_runtime: str) -> List[BaseDetectionAdapter]:
+    """
+    A function that takes care of automatically loading all the adapters from given hyperopt runtime.
+    """
+    hyperopt_models_dir = OPTUNA_DIR / "hyper" / hyper_runtime / "checkpoints"
+
+    # walk thru all the files inside the directory
+    possible_adapter_classes: List[Type[BaseDetectionAdapter]] = [
+        YoloUltralyticsAdapter,
+        RtdetrUltralyticsAdapter,
+        FasterRcnnAdapter,
+        EfficientDetAdapter,
+    ]
+
+    adapters: List[BaseDetectionAdapter] = []
+
+    for file in hyperopt_models_dir.glob("best_pickled_*_model.pkl"):
+        try:
+            for adapter_class in possible_adapter_classes:
+                adapter = adapter_class.load_pickled(file)
+                adapters.append(adapter)
+                logger.info(f"Loaded adapter from {file}")
+                break
+        except Exception:
+            pass
+
+    return adapters
 
 
 def create_ensemble(
@@ -34,8 +61,13 @@ def create_ensemble(
     params: Dict[str, Any],
     runtime: str,
     distributions: List[ScoreDistribution],
+    results_dir: Path,
     final_datasets: ADAPTER_DATASETS | None = None,
 ) -> EnsembleModel:
+    """
+    A function that creates and fits an EnsembleModel from given adapters and parameters.
+    The idea is to create a final ensemble model that would be production ready.
+    """
     ensemble_adapters = [adapter.clone() for adapter in adapters]
     if final_datasets is None:
         logger.warning(
@@ -53,10 +85,8 @@ def create_ensemble(
         distributions=distributions,
     )
 
-    pkl.dump(
-        ensemble,
-        open(OPTUNA_DIR / "ensembling" / f"ensemble_model_{runtime}.pkl", "wb"),
-    )
+    ensemble.save_pickled(results_dir / "ensemble" / runtime, suffix=runtime)
+
     return ensemble
 
 
@@ -72,12 +102,14 @@ def main(
     min_percentage_improvement: float = 0.01,
 ) -> tuple[EnsembleModel, pd.Series]:
 
-    adapters_predictions, ground_truths, distributions = create_ensembling_opt_prestep(
-        adapters=adapters,
-        train_folds=train_folds,
-        val_folds=val_folds,
-        runtime=runtime,
-        results_dir=results_dir,
+    adapters_predictions, ground_truths, distributions, metadata = (
+        create_ensembling_opt_prestep(
+            adapters=adapters,
+            train_folds=train_folds,
+            val_folds=val_folds,
+            runtime=runtime,
+            results_dir=results_dir,
+        )
     )
 
     result = execute_simple_study(
@@ -105,6 +137,8 @@ def main(
                 for fold in val_folds
                 for dataset in fold
             ],
+            "adapters_crossval_metrics": metadata["adapters_crossval_metrics"],
+            "adapters_avg_fold_map_50": metadata["adapters_avg_fold_map_50"],
         },
         hyper_suffix="ensemble",
         # append_trials=[default_adapter_params], # NOTE: this could be added to add default ensenble params
@@ -116,6 +150,7 @@ def main(
         runtime=runtime,
         distributions=distributions,
         final_datasets=final_datasets,
+        results_dir=results_dir,
     )
 
     sr = pd.Series(result)
@@ -126,44 +161,21 @@ def main(
 
 
 if __name__ == "__main__":
-    adapters = [
-        # NOTE: paths are placeholders, replace with actual paths
-        YoloUltralyticsAdapter.load_pickled("path1"),
-        RtdetrUltralyticsAdapter.load_pickled("path2"),
-        FasterRcnnAdapter.load_pickled("path3"),
-        EfficientDetAdapter.load_pickled("path4"),
-    ]
-    runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    training_folds: list[ADAPTER_DATASETS] = []
-    validation_folds: list[ADAPTER_DATASETS] = []
 
-    full_datasets: ADAPTER_DATASETS = [
-        (
-            DATA_DIR / "final_carbucks" / "all" / "images" / "all",
-            DATA_DIR / "final_carbucks" / "all" / "instances_all_curated.json",
-        )
-    ]
-    # NOTE: this is to train the ensemble and still have the chance to test it out on unseen data
-    # Model should be fully trained at the end
-    standard_full: ADAPTER_DATASETS = [
-        (
-            DATA_DIR / "final_carbucks" / "standard" / "images" / "train",
-            DATA_DIR / "final_carbucks" / "standard" / "instances_train_curated.json",
-        ),
-        (
-            DATA_DIR / "final_carbucks" / "standard" / "images" / "val",
-            DATA_DIR / "final_carbucks" / "standard" / "instances_val_curated.json",
-        ),
-    ]
-    runtime = runtime
+    # NOTE: you can define your own adapters there instead of loading from hyperopt
+    # adapters = [<your own list of adapters>]
+    adapters = load_adapters_from_hyperopt("20251121_000000_standard_carbucks")
+    runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    runtime_suffix = "ensemble_initial"
+
     main(
         adapters=adapters,
-        runtime=runtime,
+        runtime=runtime + "_" + runtime_suffix,
         results_dir=OPTUNA_DIR,
         n_trials=300,
         patience=50,
         min_percentage_improvement=0.01,
-        train_folds=training_folds,
-        val_folds=validation_folds,
-        final_datasets=standard_full,
+        train_folds=DatasetsPathManager.CARBUCKS_TRAIN_CV,
+        val_folds=DatasetsPathManager.CARBUCKS_VAL_CV,
+        final_datasets=DatasetsPathManager.CARBUCKS_TRAIN_ALL,
     )

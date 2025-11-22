@@ -172,7 +172,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         os.remove(weights_path)
 
         obj = {
-            "class": self.__class__.__name__,
+            "class": self.__class__,
             "params": self.get_params(),
             "weights": weights,
         }
@@ -184,10 +184,13 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     @classmethod
     def load_pickled(cls, path: str | Path) -> "BaseDetectionAdapter":
         obj = pkl.load(open(path, "rb"))
-
-        if obj["class"] != cls.__name__:
+        obj_class = obj["class"]
+        obj_class_name = (
+            obj_class.__name__ if hasattr(obj_class, "__name__") else str(obj_class)
+        )
+        if obj_class_name != cls.__name__:
             raise ValueError(
-                f"Pickled adapter class mismatch: expected '{cls.__name__}', got '{obj['class']}'"
+                f"Pickled adapter class mismatch: expected '{cls.__name__}', got '{obj_class_name}'"
             )
 
         params = {

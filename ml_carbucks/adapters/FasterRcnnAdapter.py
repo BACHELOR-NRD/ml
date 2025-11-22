@@ -279,7 +279,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
         obj = {
-            "class": self.__class__.__name__,
+            "class": self.__class__,
             "params": self.get_params(),
             "weights": self.model.state_dict(),
         }
@@ -291,10 +291,13 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     @classmethod
     def load_pickled(cls, path: str | Path) -> "FasterRcnnAdapter":
         obj = pkl.load(open(path, "rb"))
-
-        if obj["class"] != "FasterRcnnAdapter":
+        obj_class = obj["class"]
+        obj_class_name = (
+            obj_class.__name__ if hasattr(obj_class, "__name__") else str(obj_class)
+        )
+        if obj_class_name != cls.__name__:
             raise ValueError(
-                f"Loaded object is of class {obj['class']}, expected FasterRcnnAdapter."
+                f"Pickled adapter class mismatch: expected '{cls.__name__}', got '{obj_class_name}'"
             )
 
         params = {

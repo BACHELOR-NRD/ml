@@ -66,22 +66,14 @@ def create_objective(
             if score > best_score:
                 best_score = score
 
-                _ = trial_adapter.save_weights(
-                    dir=results_dir,
-                    prefix=f"best_weights_{adapter.__class__.__name__}",
-                )
                 _ = trial_adapter.save_pickled(
                     dir=results_dir,
-                    prefix=f"best_pickled_{adapter.__class__.__name__}",
+                    prefix=f"best_pickled_{adapter.__class__.__name__}_",
                 )
 
-            _ = trial_adapter.save_weights(
-                dir=results_dir,
-                prefix=f"last_weights_{adapter.__class__.__name__}",
-            )
             _ = trial_adapter.save_pickled(
                 dir=results_dir,
-                prefix=f"last_pickled_{adapter.__class__.__name__}",
+                prefix=f"last_pickled_{adapter.__class__.__name__}_",
             )
             del trial_adapter
             return score

@@ -4,7 +4,7 @@ from ml_carbucks import DATA_DIR
 from ml_carbucks.adapters.BaseDetectionAdapter import ADAPTER_DATASETS
 
 
-class DatasetsPathsManager:
+class DatasetsPathManager:
 
     # --- ALL DATA ---
 
