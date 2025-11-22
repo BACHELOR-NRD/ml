@@ -43,11 +43,11 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
     # --- HYPER PARAMETERS ---
 
-    lr_backbone: float = 5e-5
+    # lr_backbone: float = 5e-5
     lr_head: float = 5e-4
-    weight_decay_backbone: float = 1e-5
+    # weight_decay_backbone: float = 1e-5
     weight_decay_head: float = 1e-4
-    optimizer: FASTERRCNN_OPTIMIZER_OPTIONS = "Adam"
+    optimizer: FASTERRCNN_OPTIMIZER_OPTIONS = "AdamW"
     clip_gradients: Optional[float] = None
     momentum: float = 0.9  # Used for SGD and RMSprop
 
@@ -312,9 +312,15 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     # --- HELPER METHODS ---
 
     def _create_optimizer(self):
-        lr1 = self.lr_backbone
+        # NOTE: Using different learning rates and weight decays for backbone and head
+        # common practice to hard-code lower lr and weight decay for backbone
+        # could be parameterized if needed
+
+        # lr1 = self.lr_backbone
+        lr1 = self.lr_head / 10
         lr2 = self.lr_head
-        weight_decay1 = self.weight_decay_backbone
+        # weight_decay1 = self.weight_decay_backbone
+        weight_decay1 = self.weight_decay_head / 10
         weight_decay2 = self.weight_decay_head
 
         backbone_params = []

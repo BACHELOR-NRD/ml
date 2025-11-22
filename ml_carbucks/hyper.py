@@ -1,7 +1,7 @@
 import datetime as dt
 from pathlib import Path
 from functools import partial
-from typing import Optional
+from typing import Literal, Optional
 import warnings
 
 import pandas as pd
@@ -33,13 +33,16 @@ def main(
     results_dir: Path,
     train_datasets: list[tuple],
     val_datasets: list[tuple],
+    param_wrapper_version: Literal["v1", "v2"],
     n_trials: int = 25,
     patience: int = -1,
     min_percentage_improvement: float = 0.01,
     optimization_timeout: Optional[float] = None,
 ) -> pd.DataFrame:
+    if len(adapter_list) == 0:
+        raise ValueError("adapter_list must contain at least one adapter.")
     results = []
-    models_dir = results_dir / "hyper" / f"checkpoints_{runtime}"
+    models_dir = results_dir / "hyper" / runtime / "checkpoints"
     for adapter in adapter_list:
 
         # NOTE: this is to see if default params can outperform hyperparams
@@ -60,6 +63,7 @@ def main(
                 train_datasets=train_datasets,
                 val_datasets=val_datasets,
                 results_dir=models_dir,
+                param_wrapper_version=param_wrapper_version,
             ),
             patience=patience,
             min_percentage_improvement=min_percentage_improvement,
@@ -93,7 +97,22 @@ def main(
 if __name__ == "__main__":
 
     runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    runtime = "standard_carbucks"
+    runtime += "big_resolution_carbucks"
+    train_datasets = [
+        (
+            DATA_DIR / "final_carbucks" / "standard" / "images" / "train",
+            DATA_DIR / "final_carbucks" / "standard" / "instances_train_curated.json",
+        ),
+    ]
+    val_datasets = [
+        (
+            DATA_DIR / "final_carbucks" / "standard" / "images" / "val",
+            DATA_DIR / "final_carbucks" / "standard" / "instances_val_curated.json",
+        )
+    ]
+    results_dir = OPTUNA_DIR
+
+    # NOTE: this runs broad hyperparameter optimization with small image_resolution
     main(
         adapter_list=[
             EfficientDetAdapter(),
@@ -102,23 +121,11 @@ if __name__ == "__main__":
             RtdetrUltralyticsAdapter(),
         ],
         runtime=runtime,
-        train_datasets=[
-            (
-                DATA_DIR / "final_carbucks" / "standard" / "images" / "train",
-                DATA_DIR
-                / "final_carbucks"
-                / "standard"
-                / "instances_train_curated.json",
-            ),
-        ],
-        val_datasets=[
-            (
-                DATA_DIR / "final_carbucks" / "standard" / "images" / "val",
-                DATA_DIR / "final_carbucks" / "standard" / "instances_val_curated.json",
-            )
-        ],
+        train_datasets=train_datasets,
+        val_datasets=val_datasets,
+        param_wrapper_version="v2",  # NOTE: v2 will use bigger image sizes and epochs so it takes longer
         results_dir=OPTUNA_DIR,
-        n_trials=40,
+        n_trials=1,
         patience=15,
         min_percentage_improvement=0.01,
         optimization_timeout=4 * 3600,  # N hours

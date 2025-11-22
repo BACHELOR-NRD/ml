@@ -21,9 +21,7 @@ from ml_carbucks.utils.conversions import convert_coco_to_yolo
 
 logger = setup_logger(__name__)
 
-ULTRALYTICS_OPTIMIZER_OPTIONS = Literal[
-    "SGD", "Adam", "AdamW", "NAdam", "RAdam", "RMSProp", "auto"
-]
+ULTRALYTICS_OPTIMIZER_OPTIONS = Literal["SGD", "Adam", "AdamW", "auto"]
 
 
 @dataclass
@@ -31,7 +29,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
     # --- HYPER PARAMETERS ---
 
-    optimizer: ULTRALYTICS_OPTIMIZER_OPTIONS = "auto"
+    optimizer: ULTRALYTICS_OPTIMIZER_OPTIONS = "AdamW"
     lr: float = 1e-3
     momentum: float = 0.9
     weight_decay: float = 5e-4
