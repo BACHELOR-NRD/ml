@@ -167,9 +167,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         weights_path = Path(dir) / f"{prefix}weights{suffix}.pt"
         self.model.save(weights_path)  # type: ignore
 
-        weights = torch.load(
-            "/home/bachelor/ml-carbucks/results/pickle2/yolo.pt", weights_only=False
-        )
+        weights = torch.load(weights_path, weights_only=False)
 
         os.remove(weights_path)
 
