@@ -28,9 +28,14 @@ def convert_yolo_to_coco(base_dir, splits):
 
     # Convert all splits
     for split in splits:
-        images_dir = os.path.join(base_dir, "images", split)
-        labels_dir = os.path.join(base_dir, "labels", split)
-        output_json = os.path.join(base_dir, f"instances_{split}_curated.json")
+        if split != "":
+            images_dir = os.path.join(base_dir, "images", split)
+            labels_dir = os.path.join(base_dir, "labels", split)
+            output_json = os.path.join(base_dir, f"instances_{split}_curated.json")
+        else:
+            images_dir = os.path.join(base_dir, "images")
+            labels_dir = os.path.join(base_dir, "labels")
+            output_json = os.path.join(base_dir, "instances_curated.json")
 
         # yolo_to_coco(images_dir, labels_dir, categories, output_json)
         coco = {
