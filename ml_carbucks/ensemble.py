@@ -17,11 +17,13 @@ from ml_carbucks.adapters.UltralyticsAdapter import (  # noqa: F401
 from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter  # noqa: F401
 from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter  # noqa: F401
 from ml_carbucks.ensemble.EnsembleModel import EnsembleModel
-from ml_carbucks.optmization.ensemble_objective import create_objective
-from ml_carbucks.optmization.ensemble_objective import create_ensembling_opt_prestep
+from ml_carbucks.optmization.ensemble_objective import (
+    create_objective,
+    create_ensembling_opt_prestep,
+)
 from ml_carbucks.optmization.simple_study import execute_simple_study
 from ml_carbucks.utils.DatasetsPathManager import DatasetsPathManager
-from ml_carbucks.utils.ensemble import ScoreDistribution
+from ml_carbucks.utils.ensembling import ScoreDistribution
 from ml_carbucks.utils.logger import setup_logger
 
 logger = setup_logger(__name__)

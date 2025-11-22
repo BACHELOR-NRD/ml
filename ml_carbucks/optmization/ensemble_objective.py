@@ -13,7 +13,7 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
     BaseDetectionAdapter,
 )
 from ml_carbucks.optmization.TrialParamWrapper import TrialParamWrapper
-from ml_carbucks.utils.ensemble import (
+from ml_carbucks.utils.ensembling import (
     ScoreDistribution,
     calculate_score_distribution,
     fuse_adapters_predictions,
