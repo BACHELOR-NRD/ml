@@ -63,45 +63,36 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         logger.debug("Creating Faster R-CNN model...")
 
         img_size = self.img_size
-        weights = self.weights
 
-        if weights in ("DEFAULT", "V1", "V2"):
-
+        if self.weights in ("DEFAULT", "V1"):
             weights_enum = FasterRCNN_ResNet50_FPN_Weights.DEFAULT
-            if weights == "V2":
-                weights_enum = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
-
-            self.model = fasterrcnn_resnet50_fpn(
-                weights=weights_enum,
-                min_size=img_size,
-                max_size=img_size,
-            )
-
-            in_features = self.model.roi_heads.box_predictor.cls_score.in_features  # type: ignore
-            self.model.roi_heads.box_predictor = FastRCNNPredictor(
-                in_features, self.n_classes + 1  # +1 for background
-            )
-        elif (
-            weights is not None
-            and not isinstance(weights, dict)
-            and Path(weights).is_file()
-        ):
-            self.model = fasterrcnn_resnet50_fpn(
-                num_classes=self.n_classes + 1
-            )  # +1 for background
-            checkpoint = torch.load(weights, map_location=self.device)  # type: ignore
-            self.model.load_state_dict(checkpoint)
-        elif isinstance(weights, dict):
-            # NOTE: at this point we assume that weights is already a checkpoint dict
-            self.model = fasterrcnn_resnet50_fpn(
-                num_classes=self.n_classes + 1
-            )  # +1 for background
-            self.model.load_state_dict(
-                weights
-            )  # NOTE: perhaps the weights need to be loaded onto correct device first?
+        elif self.weights == "V2":
+            weights_enum = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
         else:
+            weights_enum = None
+
+        self.model = fasterrcnn_resnet50_fpn(
+            weights=weights_enum,
+            min_size=img_size,
+            max_size=img_size,
+        )
+
+        in_features = self.model.roi_heads.box_predictor.cls_score.in_features  # type: ignore
+        self.model.roi_heads.box_predictor = FastRCNNPredictor(
+            in_features, self.n_classes + 1  # +1 for background
+        )
+
+        if isinstance(self.weights, str) and Path(self.weights).is_file():
+            checkpoint = torch.load(self.weights, map_location=self.device)  # type: ignore
+            self.model.load_state_dict(checkpoint)
+        elif isinstance(self.weights, dict):
+            # NOTE: at this point we assume that weights is already a checkpoint dict
+            self.model.load_state_dict(
+                self.weights
+            )  # NOTE: perhaps the weights need to be loaded onto correct device first?
+        elif weights_enum is None:
             raise ValueError(
-                "Weights must be 'DEFAULT' or a valid path to a checkpoint."
+                "Weights must be 'DEFAULT', 'V1', 'V2' or a valid path to a checkpoint or checkpoint itself"
             )
 
         self.model.to(self.device)
