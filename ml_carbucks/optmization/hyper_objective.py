@@ -33,7 +33,7 @@ def create_objective(
 
             metrics = trial_adapter.evaluate(datasets=val_datasets)
 
-            score = metrics["map_50_95"]
+            score = metrics["map_50"]
 
             logger.info(
                 f"Trial {trial.number} completed with score: {score}, params: {params}, metrics: {metrics}"
@@ -48,12 +48,20 @@ def create_objective(
 
                 _ = trial_adapter.save_weights(
                     dir=results_dir,
-                    prefix=f"best_{adapter.__class__.__name__}",
+                    prefix=f"best_weights_{adapter.__class__.__name__}",
+                )
+                _ = trial_adapter.save_pickled(
+                    dir=results_dir,
+                    prefix=f"best_pickled_{adapter.__class__.__name__}",
                 )
 
             _ = trial_adapter.save_weights(
                 dir=results_dir,
-                prefix=f"last_{adapter.__class__.__name__}",
+                prefix=f"last_weights_{adapter.__class__.__name__}",
+            )
+            _ = trial_adapter.save_pickled(
+                dir=results_dir,
+                prefix=f"last_pickled_{adapter.__class__.__name__}",
             )
             del trial_adapter
             return score

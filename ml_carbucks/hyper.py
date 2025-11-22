@@ -91,8 +91,9 @@ def main(
 
 
 if __name__ == "__main__":
-    classes = ["scratch", "dent", "crack"]
+
     runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    runtime = "final_carbucks_data_demo"
     main(
         adapter_list=[
             EfficientDetAdapter(),
@@ -103,33 +104,22 @@ if __name__ == "__main__":
         runtime=runtime,
         train_datasets=[
             (
+                DATA_DIR / "final_carbucks" / "standard" / "images" / "train",
                 DATA_DIR
-                / "combinations"
-                / "cardd_plus_carbucks_splitted"
-                / "images"
-                / "train",
-                DATA_DIR
-                / "combinations"
-                / "cardd_plus_carbucks_splitted"
+                / "final_carbucks"
+                / "standard"
                 / "instances_train_curated.json",
             ),
         ],
         val_datasets=[
             (
-                DATA_DIR
-                / "combinations"
-                / "cardd_plus_carbucks_splitted"
-                / "images"
-                / "val",
-                DATA_DIR
-                / "combinations"
-                / "cardd_plus_carbucks_splitted"
-                / "instances_val_curated.json",
+                DATA_DIR / "final_carbucks" / "standard" / "images" / "val",
+                DATA_DIR / "final_carbucks" / "standard" / "instances_val_curated.json",
             )
         ],
         results_dir=OPTUNA_DIR,
-        n_trials=30,
+        n_trials=40,
         patience=15,
-        min_percentage_improvement=0.02,
-        optimization_timeout=8 * 3600,  # N hours
+        min_percentage_improvement=0.01,
+        optimization_timeout=6 * 3600,  # N hours
     )

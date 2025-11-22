@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 import pandas as pd
 import pickle as pkl
 
-from ml_carbucks import OPTUNA_DIR
+from ml_carbucks import DATA_DIR, OPTUNA_DIR
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_DATASETS,
     BaseDetectionAdapter,
@@ -34,17 +34,17 @@ def create_ensemble(
     params: Dict[str, Any],
     runtime: str,
     distributions: List[ScoreDistribution],
-    full_datasets: ADAPTER_DATASETS | None = None,
+    final_datasets: ADAPTER_DATASETS | None = None,
 ) -> EnsembleModel:
     ensemble_adapters = [adapter.clone() for adapter in adapters]
-    if full_datasets is None:
+    if final_datasets is None:
         logger.warning(
             "Full datasets for ensemble training not provided. EnsembleModel will be created without fitting."
         )
     else:
         for i in range(len(ensemble_adapters)):
             ensemble_adapters[i] = (
-                ensemble_adapters[i].clone().setup().fit(datasets=full_datasets)
+                ensemble_adapters[i].clone().setup().fit(datasets=final_datasets)
             )
 
     ensemble = EnsembleModel(
@@ -66,7 +66,7 @@ def main(
     results_dir: Path,
     train_folds: list[ADAPTER_DATASETS],
     val_folds: list[ADAPTER_DATASETS],
-    full_datasets: ADAPTER_DATASETS | None = None,
+    final_datasets: ADAPTER_DATASETS | None = None,
     n_trials: int = 25,
     patience: int = -1,
     min_percentage_improvement: float = 0.01,
@@ -115,7 +115,7 @@ def main(
         params=result["best_params"],
         runtime=runtime,
         distributions=distributions,
-        full_datasets=full_datasets,
+        final_datasets=final_datasets,
     )
 
     sr = pd.Series(result)
@@ -127,6 +127,7 @@ def main(
 
 if __name__ == "__main__":
     adapters = [
+        # NOTE: paths are placeholders, replace with actual paths
         YoloUltralyticsAdapter.load_pickled("path1"),
         RtdetrUltralyticsAdapter.load_pickled("path2"),
         FasterRcnnAdapter.load_pickled("path3"),
@@ -135,6 +136,25 @@ if __name__ == "__main__":
     runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     training_folds: list[ADAPTER_DATASETS] = []
     validation_folds: list[ADAPTER_DATASETS] = []
+
+    full_datasets: ADAPTER_DATASETS = [
+        (
+            DATA_DIR / "final_carbucks" / "all" / "images" / "all",
+            DATA_DIR / "final_carbucks" / "all" / "instances_all_curated.json",
+        )
+    ]
+    # NOTE: this is to train the ensemble and still have the chance to test it out on unseen data
+    # Model should be fully trained at the end
+    standard_full: ADAPTER_DATASETS = [
+        (
+            DATA_DIR / "final_carbucks" / "standard" / "images" / "train",
+            DATA_DIR / "final_carbucks" / "standard" / "instances_train_curated.json",
+        ),
+        (
+            DATA_DIR / "final_carbucks" / "standard" / "images" / "val",
+            DATA_DIR / "final_carbucks" / "standard" / "instances_val_curated.json",
+        ),
+    ]
     runtime = runtime
     main(
         adapters=adapters,
@@ -142,8 +162,8 @@ if __name__ == "__main__":
         results_dir=OPTUNA_DIR,
         n_trials=300,
         patience=50,
-        min_percentage_improvement=0.02,
+        min_percentage_improvement=0.01,
         train_folds=training_folds,
         val_folds=validation_folds,
-        full_datasets=None,
+        final_datasets=standard_full,
     )
