@@ -3,8 +3,9 @@ from pathlib import Path
 from typing import List, Tuple, Literal, Optional, override
 
 import numpy as np
-from torchmetrics.detection.mean_ap import MeanAveragePrecision
+import pickle as pkl
 from tqdm import tqdm
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_METRICS,
@@ -152,11 +153,40 @@ class EnsembleModel(BaseDetectionAdapter):
         raise NotImplementedError("EnsembleModel weights saving not implemented yet.")
 
     def save_pickled(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
-        raise NotImplementedError("EnsembleModel pickling not implemented yet.")
+        obj = {
+            "class": self.__class__,
+            "adapters": [],
+            "params": self.get_params(skip=["adapters"]),
+        }
+        pickled_adapter_paths = []
+        for idx, adapter in enumerate(self.adapters):
+            apath = adapter.save_pickled(
+                dir=dir, prefix=f"adapter_{idx}_{prefix}", suffix=suffix
+            )
+            pickled_adapter_paths.append(apath)
 
-    @staticmethod
-    def load_pickled(path: str | Path) -> BaseDetectionAdapter:
-        raise NotImplementedError("EnsembleModel loading not implemented yet.")
+        for ppath in pickled_adapter_paths:
+            adapter_pickle_dict = pkl.load(open(ppath, "rb"))
+            obj["adapters"].append(adapter_pickle_dict)
+
+        save_path = Path(dir) / f"{prefix}ensemble_model{suffix}.pkl"
+        pkl.dump(obj, open(save_path, "wb"))
+
+        return save_path
+
+    @classmethod
+    def load_pickled(cls, path: str | Path) -> "EnsembleModel":
+        """Load pickled model from the specified path."""
+        obj = pkl.load(open(path, "rb"))
+
+        adapters = [
+            adapter_dict["class"].load_pickled(adapter_dict)
+            for adapter_dict in obj["adapters"]
+        ]
+        params = obj["params"]
+        ensemble = cls(adapters=adapters, **params)
+
+        return ensemble
 
 
 class EnsembleFacilitator:

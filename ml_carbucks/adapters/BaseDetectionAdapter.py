@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Tuple, TypedDict, Required
+from typing import Any, Dict, List, Literal, Optional, Tuple, TypedDict, Required
 from dataclasses import dataclass, field
 import numpy as np
 
@@ -134,11 +134,13 @@ class BaseDetectionAdapter(ABC):
                 )
         return self
 
-    def get_params(self) -> Dict[str, Any]:
+    def get_params(self, skip: Optional[List[str]] = None) -> Dict[str, Any]:
+        skip_keys = ["device", "model"]
+        if skip:
+            skip_keys.extend(skip)
+
         return {
-            key: value
-            for key, value in self.__dict__.items()
-            if key not in ["model", "device"]
+            key: value for key, value in self.__dict__.items() if key not in skip_keys
         }
 
     def clone(self) -> "BaseDetectionAdapter":
