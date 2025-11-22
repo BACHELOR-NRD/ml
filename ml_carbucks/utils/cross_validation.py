@@ -3,88 +3,104 @@ from pathlib import Path
 import json
 from collections import defaultdict
 import numpy as np
+import shutil
 from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
 from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter
 from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter
-from ml_carbucks.adapters.UltralyticsAdapter import UltralyticsAdapter
+from ml_carbucks.adapters.UltralyticsAdapter import (
+    YoloUltralyticsAdapter,
+    RtdetrUltralyticsAdapter,
+)
 from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
 
 
-def stratified_cross_valitation(hyper_results :dict | Path,
-                                results_dir: Path,
-                                dataset_dir:Path = 'data/carbucks_crossval_dataset/images',
-                                annotations_path:Path = 'data/carbucks_crossval_dataset/annotations/instances_crossval.json',
-                                cv_folds: int = 5,
-                                random_state: int = 42):
-    
+dataset_base = Path("/home/bachelor/ml-carbucks/data/carbucks_crossval_folds")
+
+
+def stratified_cross_valitation(
+    hyper_results: dict | Path,
+    results_dir: Path,
+    dataset_dir: Path = dataset_base,
+    cv_folds: int = 5,
+    setup_ensemble: callable = None,
+):
+
     logger = setup_logger(__name__)
-    if isinstance(hyper_results, Path):
-        hyper_results = read_json(hyper_results)
-        
+    logger.info("Starting stratified cross-validation")
+
+    if isinstance(hyper_results, (Path, str)):
+        hyper_results = read_json(Path(hyper_results))
+
     study_name = hyper_results["study_name"]
-    study_dir = results_dir / study_name
-    study_dir.mkdir(parents=True, exist_ok=True)
-
+    study_dir = get_or_create_study_dir(results_dir, study_name)
     best_params = hyper_results["best_params"]
-    coco_data = read_json(annotations_path)
-    folds = create_multilabel_stratified_kfold_split(coco_data, cv_folds, random_state)
-
+    folds = sorted(dataset_dir.glob("fold_*"))
+    print(len(folds))
     fold_results = []
 
-    for fold_idx, (train_idx, val_idx) in enumerate(folds):
-        logger.info(f"Processing fold {fold_idx + 1}/{cv_folds}")
-        
-        # Create fold-specific datasets
-        train_dataset, val_dataset = create_fold_datasets(
-            coco_data, train_idx, val_idx, dataset_dir, study_dir, fold_idx
-        )
+    for fold in folds:
+
+        fold_idx = int(fold.name.split("_")[1])
+        logger.info(f"Processing fold {fold_idx}")
+
+        train_dataset = [(fold / "images" / "train", fold / "annotations_train.json")]
+        val_dataset = [(fold / "images" / "val", fold / "annotations_val.json")]
+
+        logger.info(f"Hyperparameters for fold {fold_idx}: {best_params}")
+        logger.info(f"training dataset: {train_dataset}")
+        logger.info(f"validation dataset: {val_dataset}")
 
         adapter_class = get_adapter_class(hyper_results["adapter"])
-        model: BaseDetectionAdapter = adapter_class(
-            classes=hyper_results['classes'],
-            img_size=best_params["img_size"],
-            batch_size=best_params["batch_size"],
-            epochs=best_params["epochs"],
-            lr=best_params["lr"],
-            momentum=best_params["momentum"],
-            weight_decay=best_params["weight_decay"],
-            optimizer=best_params["optimizer"],
-            project_dir=None,
-            training_save=False,
-            name=f"fold_{fold_idx}"
-        )
-
-        model.setup()
-        model.fit(train_dataset)
-        metrics = model.evaluate(val_dataset)
-
-        train_path = study_dir / f"fold_{fold_idx}_train.json"
-        val_path = study_dir / f"fold_{fold_idx}_val.json"
-        train_path.unlink()
-        val_path.unlink()
-
-        fold_data = {"fold": fold_idx, "metrics": metrics}
-        fold_file = study_dir / f"fold_{fold_idx}.json"
-        with open(fold_file, "w") as f:
-            json.dump(fold_data, f, indent=4)
-
-        fold_results.append(fold_data)
+        result = model_training(adapter_class, best_params, train_dataset, val_dataset,callable())
+        fold_results.append(result)
 
     logger.info("Cross-validation complete. Compiling summary statistics.")
+
     summary = create_summary_statistics(fold_results, study_name, cv_folds)
     summary_path = study_dir / "cv_metrics.json"
     with open(summary_path, "w") as f:
         json.dump(summary, f, indent=4)
+    logger.info(f"Summary statistics saved to {summary_path}")
+    return summary
 
 
-#helpers
+# helpers
+
+
+def get_or_create_study_dir(results_dir: Path, study_name: str) -> Path:
+    study_dir = results_dir / study_name
+    study_dir.mkdir(parents=True, exist_ok=True)
+    return study_dir
+
+
+def model_training(
+    adapter_class: type[BaseDetectionAdapter],
+    best_params: dict,
+    train_dataset: tuple,
+    val_dataset: tuple,
+    setup_ensemble: callable = None,
+) -> dict:
+
+    if setup_ensemble:
+        setup_ensemble()
+    else:
+        model: BaseDetectionAdapter = adapter_class(**best_params)
+
+        model.setup()
+        model.fit(train_dataset)
+        metrics = model.evaluate(val_dataset)
+        return metrics
+
+
 def get_adapter_class(adapter_name: str):
     adapter_classes = {
         "EfficientDetAdapter": EfficientDetAdapter,
         "FasterRcnnAdapter": FasterRcnnAdapter,
-        "UltralyticsAdapter": UltralyticsAdapter
+        "YoloUltralyticsAdapter": YoloUltralyticsAdapter,
+        "RtdetrUltralyticsAdapter": RtdetrUltralyticsAdapter,
     }
     return adapter_classes.get(adapter_name)
+
 
 def create_fold_datasets(
     coco_data: dict,
@@ -92,7 +108,7 @@ def create_fold_datasets(
     val_idx: np.ndarray,
     dataset_dir: Path,
     study_dir: Path,
-    fold_idx: int
+    fold_idx: int,
 ) -> tuple[list[tuple[Path, Path]], list[tuple[Path, Path]]]:
 
     train_annotations = filter_coco_by_indices(coco_data, train_idx)
@@ -108,37 +124,36 @@ def create_fold_datasets(
 
     train_dataset = [(dataset_dir, train_path)]
     val_dataset = [(dataset_dir, val_path)]
-    
+
     return train_dataset, val_dataset
+
 
 def filter_coco_by_indices(coco_data: dict, image_indices: np.ndarray) -> dict:
     images = coco_data["images"]
     selected_image_ids = {images[idx]["id"] for idx in image_indices}
-    
+
     filtered_images = [img for img in images if img["id"] in selected_image_ids]
     filtered_annotations = [
-        ann for ann in coco_data["annotations"] 
-        if ann["image_id"] in selected_image_ids
+        ann for ann in coco_data["annotations"] if ann["image_id"] in selected_image_ids
     ]
-    
+
     return {
         "images": filtered_images,
         "annotations": filtered_annotations,
-        "categories": coco_data["categories"]
+        "categories": coco_data["categories"],
     }
 
 
-def create_summary_statistics(fold_results: list[dict], study_name: str, cv_folds: int) -> dict:
+def create_summary_statistics(
+    fold_results: list[dict], study_name: str, cv_folds: int
+) -> dict:
 
     summary = {
         "study_name": study_name,
         "cv_folds": cv_folds,
         "fold_results": fold_results,
-        "avg_map_50": float(np.mean([f["metrics"]["map_50"] for f in fold_results])),
-        "avg_map_50_95": float(np.mean([f["metrics"]["map_50_95"] for f in fold_results])),
     }
     return summary
-
 
 
 def coco_to_multilabel_matrix(coco_data: dict):
@@ -166,20 +181,18 @@ def coco_to_multilabel_matrix(coco_data: dict):
             col = cat_to_index[cat_id]
             Y[i, col] = 1
 
-
     return Y
 
+
 def create_multilabel_stratified_kfold_split(coco_data, n_splits=5, random_state=42):
-    
+
     Y = coco_to_multilabel_matrix(coco_data)
-   
+
     # Dummy feature matrix
     X = np.zeros((len(Y), 1))
 
     mskf = MultilabelStratifiedKFold(
-        n_splits=n_splits,
-        shuffle=True,
-        random_state=random_state
+        n_splits=n_splits, shuffle=True, random_state=random_state
     )
 
     folds = []
@@ -192,5 +205,101 @@ def create_multilabel_stratified_kfold_split(coco_data, n_splits=5, random_state
 def read_json(path: Path) -> dict:
     with open(path, "r") as f:
         return json.load(f)
-    
 
+
+def create_crossval_fold_structure(
+    source_dataset_dir: Path,
+    output_base_dir: Path,
+    coco_annotations_file: str = "instances_crossval.json",
+    n_splits: int = 5,
+    random_state: int = 42,
+) -> None:
+    """
+    Creates fold directories with train/val splits using multilabel stratified k-fold.
+
+    Args:
+        source_dataset_dir: Directory containing 'images/' and 'annotations/' folders
+        output_base_dir: Base directory where fold1, fold2, etc. will be created
+        coco_annotations_file: Name of the COCO annotations JSON file
+        n_splits: Number of folds to create
+        random_state: Random seed for reproducibility
+
+    Structure created:
+        output_base_dir/
+            fold_1/
+                images/
+                    train/
+                    val/
+                annotations_train.json
+                annotations_val.json
+            fold_2/
+            ...
+    """
+    logger = setup_logger(__name__)
+
+    annotations_path = source_dataset_dir / coco_annotations_file
+    logger.info(f"Loading annotations from {annotations_path}")
+    coco_data = read_json(annotations_path)
+
+    # Get image directory
+    images_dir = source_dataset_dir / "images"
+    if not images_dir.exists():
+        raise ValueError(f"Images directory not found: {images_dir}")
+
+    # Create multilabel stratified k-fold splits
+    logger.info(f"Creating {n_splits}-fold stratified split")
+    folds = create_multilabel_stratified_kfold_split(coco_data, n_splits, random_state)
+
+    # Create output base directory
+    output_base_dir.mkdir(parents=True, exist_ok=True)
+
+    # Process each fold
+    for fold_idx, (train_idx, val_idx) in enumerate(folds, start=1):
+        logger.info(f"Processing fold {fold_idx}/{n_splits}")
+
+        # Create fold directory structure
+        fold_dir = output_base_dir / f"fold_{fold_idx}"
+        base_img_dir = fold_dir / "images"
+        train_images_dir = base_img_dir / "train"
+        val_images_dir = base_img_dir / "val"
+
+        # Create directories
+        train_images_dir.mkdir(parents=True, exist_ok=True)
+        val_images_dir.mkdir(parents=True, exist_ok=True)
+
+        # Filter annotations for train and val
+        train_annotations = filter_coco_by_indices(coco_data, train_idx)
+        val_annotations = filter_coco_by_indices(coco_data, val_idx)
+
+        # Save annotations
+        train_ann_path = fold_dir / "annotations_train.json"
+        val_ann_path = fold_dir / "annotations_val.json"
+
+        with open(train_ann_path, "w") as f:
+            json.dump(train_annotations, f, indent=2)
+        with open(val_ann_path, "w") as f:
+            json.dump(val_annotations, f, indent=2)
+
+        # Copy images for train set
+        logger.info(f"  Copying {len(train_annotations['images'])} training images")
+        for img_info in train_annotations["images"]:
+            src_path = images_dir / img_info["file_name"]
+            dst_path = train_images_dir / img_info["file_name"]
+            if src_path.exists():
+                shutil.copy2(src_path, dst_path)
+            else:
+                logger.warning(f"  Image not found: {src_path}")
+
+        # Copy images for val set
+        logger.info(f"  Copying {len(val_annotations['images'])} validation images")
+        for img_info in val_annotations["images"]:
+            src_path = images_dir / img_info["file_name"]
+            dst_path = val_images_dir / img_info["file_name"]
+            if src_path.exists():
+                shutil.copy2(src_path, dst_path)
+            else:
+                logger.warning(f"  Image not found: {src_path}")
+
+        logger.info(f"  Fold {fold_idx} complete: {fold_dir}")
+
+    logger.info(f"All {n_splits} folds created successfully in {output_base_dir}")
