@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from functools import partial
 from typing import Any, Dict, List, Optional
 from typing_extensions import Literal
 
@@ -20,7 +19,7 @@ class TrialParamWrapper:
 
     V2_IMG_SIZE_OPTIONS: List[int] = [1024]
 
-    def _get_ultralytics_params(self, trial: optuna.Trial, name: str) -> Dict[str, Any]:
+    def _get_yolo_params(self, trial: optuna.Trial) -> Dict[str, Any]:
 
         params: Dict[str, Any] = {
             "lr": trial.suggest_float("lr", 1e-4, 5e-3, log=True),
@@ -29,9 +28,7 @@ class TrialParamWrapper:
         if self.version == "v1":
             params.update(
                 {
-                    "weights": trial.suggest_categorical(
-                        "weights", ["yolo11m.pt" if name == "yolo" else "rtdetr-l.pt"]
-                    ),
+                    "weights": trial.suggest_categorical("weights", ["yolo11m.pt"]),
                     "epochs": trial.suggest_int("epochs", 10, 30),
                     "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
                     "img_size": trial.suggest_categorical(
@@ -46,9 +43,45 @@ class TrialParamWrapper:
         if self.version == "v2":
             params.update(
                 {
-                    "weights": trial.suggest_categorical(
-                        "weights", ["yolo11x.pt" if name == "yolo" else "rtdetr-x.pt"]
+                    "weights": trial.suggest_categorical("weights", ["yolo11x.pt"]),
+                    "epochs": trial.suggest_int("epochs", 20, 60),
+                    "batch_size": trial.suggest_categorical("batch_size", [8, 16]),
+                    "img_size": trial.suggest_categorical(
+                        "img_size", self.V2_IMG_SIZE_OPTIONS
                     ),
+                    "momentum": trial.suggest_float("momentum", 0.3, 0.99),
+                    "optimizer": trial.suggest_categorical(
+                        "optimizer", ["Adam", "AdamW"]
+                    ),
+                }
+            )
+        return params
+
+    def _get_rtdetr_params(self, trial: optuna.Trial) -> Dict[str, Any]:
+
+        params: Dict[str, Any] = {
+            "lr": trial.suggest_float("lr", 1e-4, 5e-3, log=True),
+            "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
+        }
+        if self.version == "v1":
+            params.update(
+                {
+                    "weights": trial.suggest_categorical("weights", ["rtdetr-l.pt"]),
+                    "epochs": trial.suggest_int("epochs", 10, 30),
+                    "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
+                    "img_size": trial.suggest_categorical(
+                        "img_size", self.V1_IMG_SIZE_OPTIONS
+                    ),
+                    "momentum": trial.suggest_float("momentum", 0.3, 0.99),
+                    "optimizer": trial.suggest_categorical(
+                        "optimizer", ["Adam", "AdamW"]
+                    ),
+                }
+            )
+        if self.version == "v2":
+            params.update(
+                {
+                    "weights": trial.suggest_categorical("weights", ["rtdetr-x.pt"]),
                     "epochs": trial.suggest_int("epochs", 20, 60),
                     "batch_size": trial.suggest_categorical("batch_size", [8, 16]),
                     "img_size": trial.suggest_categorical(
@@ -106,7 +139,7 @@ class TrialParamWrapper:
 
     def _get_efficientdet_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         params: Dict[str, Any] = {
-            "lr": trial.suggest_float("lr", 1e-4, 1e-2, log=True),
+            "lr": trial.suggest_float("lr", 5e-4, 1e-2, log=True),
             "weight_decay": trial.suggest_float("weight_decay", 5e-6, 1e-2, log=True),
             "loader": trial.suggest_categorical("loader", ["inbuilt"]),
         }
@@ -185,8 +218,8 @@ class TrialParamWrapper:
     ) -> Dict[str, Any]:
 
         param_pairs = [
-            ("yolo", partial(self._get_ultralytics_params, name="yolo")),
-            ("rtdetr", partial(self._get_ultralytics_params, name="rtdetr")),
+            ("yolo", self._get_yolo_params),
+            ("rtdetr", self._get_rtdetr_params),
             ("fasterrcnn", self._get_fasterrcnn_params),
             ("efficientdet", self._get_efficientdet_params),
             ("ensemblemodel", self._get_ensemble_model_params),
