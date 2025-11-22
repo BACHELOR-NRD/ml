@@ -13,7 +13,7 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_DATASETS,
     BaseDetectionAdapter,
 )
-from ml_carbucks.utils.ensemble import (
+from ml_carbucks.utils.ensembling import (
     ScoreDistribution,
     fuse_adapters_predictions,
 )
