@@ -1,7 +1,7 @@
 import datetime as dt  # noqa: F401
 from pathlib import Path
 from functools import partial
-from typing import List, Type
+from typing import List, Literal, Type
 
 import pandas as pd
 
@@ -66,6 +66,7 @@ def main(
     results_dir: Path,
     train_folds: list[ADAPTER_DATASETS],
     val_folds: list[ADAPTER_DATASETS],
+    param_wrapper_version: Literal["v3", "v4"],
     final_datasets: ADAPTER_DATASETS | None = None,
     n_trials: int = 25,
     patience: int = -1,
@@ -92,11 +93,13 @@ def main(
             adapters_predictions=adapters_predictions,
             ground_truths=ground_truths,
             distributions=distributions,
+            param_wrapper_version=param_wrapper_version,
         ),
         patience=patience,
         min_percentage_improvement=min_percentage_improvement,
         metadata={
             "runtime": runtime,
+            "param_wrapper_version": param_wrapper_version,
             "train_folds": [
                 [str(dataset[0]), str(dataset[1])]
                 for fold in train_folds
@@ -110,6 +113,7 @@ def main(
             **metadata,
         },
         study_attributes={
+            "param_wrapper_version": param_wrapper_version,
             **metadata,
         },
         hyper_suffix="ensemble",
@@ -134,35 +138,37 @@ def main(
 
 if __name__ == "__main__":
 
-    # adapters = load_adapters_from_hyperopt("20251121_000000_standard_carbucks", load_pattern="best_pickled_Y*_model.pkl")
-    # runtime_prefix = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    # runtime_suffix = "ensemble_initial"
-    # runtime = f"{runtime_prefix}_{runtime_suffix}"
+    adapters = load_adapters_from_hyperopt(
+        "<hyper_runtime>", load_pattern="best_pickled_*_model.pkl"
+    )
+    runtime_prefix = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    runtime_suffix = "ensemble_initial"
+    runtime = f"{runtime_prefix}_{runtime_suffix}"
 
     # NOTE: manual override for debugging
-    adapters = [
-        YoloUltralyticsAdapter(
-            checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/YoloUltralyticsAdapter_model.pkl"
-        )
-        .setup()
-        .clone(clean=True),
-        RtdetrUltralyticsAdapter(
-            checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/RtdetrUltralyticsAdapter_model.pkl"
-        )
-        .setup()
-        .clone(clean=True),
-        FasterRcnnAdapter(
-            checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/FasterRcnnAdapter_model.pkl"
-        )
-        .setup()
-        .clone(clean=True),
-        EfficientDetAdapter(
-            checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/EfficientDetAdapter_model.pkl"
-        )
-        .setup()
-        .clone(clean=True),
-    ]
-    runtime = "20251123_155224_ensemble_initial"
+    # adapters = [
+    #     YoloUltralyticsAdapter(
+    #         checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/YoloUltralyticsAdapter_model.pkl"
+    #     )
+    #     .setup()
+    #     .clone(clean=True),
+    #     RtdetrUltralyticsAdapter(
+    #         checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/RtdetrUltralyticsAdapter_model.pkl"
+    #     )
+    #     .setup()
+    #     .clone(clean=True),
+    #     FasterRcnnAdapter(
+    #         checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/FasterRcnnAdapter_model.pkl"
+    #     )
+    #     .setup()
+    #     .clone(clean=True),
+    #     EfficientDetAdapter(
+    #         checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/EfficientDetAdapter_model.pkl"
+    #     )
+    #     .setup()
+    #     .clone(clean=True),
+    # ]
+    # runtime = "20251123_155224_ensemble_initial"
 
     main(
         adapters=adapters,
@@ -170,6 +176,7 @@ if __name__ == "__main__":
         results_dir=OPTUNA_DIR,
         n_trials=400,
         patience=75,
+        param_wrapper_version="v4",  # NOTE: v4 only allows WBF and v3 only NMS
         min_percentage_improvement=0.01,
         train_folds=DatasetsPathManager.CARBUCKS_TRAIN_CV,
         val_folds=DatasetsPathManager.CARBUCKS_VAL_CV,

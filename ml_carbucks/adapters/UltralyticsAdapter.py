@@ -224,7 +224,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             data=data_yaml,
             verbose=self.verbose,
             project=results_path,
-            name=results_name,
+            name=f"{results_name}_val",
         )
 
         metrics: ADAPTER_METRICS = {
