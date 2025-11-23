@@ -100,6 +100,36 @@ def convert_yolo_to_coco(base_dir, splits):
         )
 
 
+def convert_coco_to_yolo_with_train_val(
+    train_img_dir: str,
+    train_ann_file: str,
+    val_img_dir: str,
+    val_ann_file: str,
+) -> Path:
+
+    train_yaml = convert_coco_to_yolo(train_img_dir, train_ann_file)
+    val_yaml = convert_coco_to_yolo(val_img_dir, val_ann_file)
+
+    # Merge YAML files
+    with open(train_yaml, "r") as f:
+        train_data = yaml.safe_load(f)
+    with open(val_yaml, "r") as f:
+        val_data = yaml.safe_load(f)
+
+    merged_yaml = {
+        "train": train_data["train"],
+        "val": val_data["val"],
+        "nc": train_data["nc"],
+        "names": train_data["names"],
+    }
+
+    merged_yaml_path = train_yaml.parent / "dataset_combined.yaml"
+    with open(merged_yaml_path, "w") as f:
+        yaml.dump(merged_yaml, f, sort_keys=False)
+
+    return merged_yaml_path
+
+
 def convert_coco_to_yolo(img_dir: str, ann_file: str) -> Path:
     start_time = time.time()
     ann_path = Path(ann_file)
