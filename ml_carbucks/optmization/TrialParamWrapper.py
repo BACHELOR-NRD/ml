@@ -207,15 +207,11 @@ class TrialParamWrapper:
             )
             params["fusion_trust_weights"] = None
         else:
-            use_weights = trial.suggest_categorical("use_trust_weights", [True, False])
-            if use_weights is True:
-                trust_weights = []
-                for i in range(self.ensemble_size):
-                    weight = trial.suggest_float(f"trust_weight_{i}", 0.5, 1.0)
-                    trust_weights.append(weight)
-                params["fusion_trust_weights"] = trust_weights
-            else:
-                params["fusion_trust_weights"] = None
+            trust_weights = []
+            for i in range(self.ensemble_size):
+                weight = trial.suggest_float(f"trust_weight_{i}", 0.75, 1.0)
+                trust_weights.append(weight)
+            params["fusion_trust_weights"] = trust_weights
 
         return params
 

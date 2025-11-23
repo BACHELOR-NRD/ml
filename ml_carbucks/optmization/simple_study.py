@@ -1,7 +1,7 @@
 import math
 import json
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, List, Literal, Optional, Tuple, Union
 
 import optuna
 
@@ -9,6 +9,10 @@ from ml_carbucks.optmization.EarlyStoppingCallback import create_early_stopping_
 from ml_carbucks.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
+
+OPTUNA_DIRECTION_TYPE = Union[
+    List[Literal["maximize", "minimize"]], Literal["maximize", "minimize"]
+]
 
 
 def params_equal(p1, p2, tol=1e-8):
@@ -25,6 +29,68 @@ def params_equal(p1, p2, tol=1e-8):
     return True
 
 
+def get_existing_trials_info_multiobj(
+    trials: List[optuna.trial.FrozenTrial],
+    min_percentage_improvement: float,
+    directions: OPTUNA_DIRECTION_TYPE,
+) -> Tuple[List[int], List[Optional[float]]]:
+
+    temp_directions = directions if isinstance(directions, list) else [directions]
+
+    n_objectives = len(temp_directions)
+    no_improvement_counts = [0 for _ in range(n_objectives)]
+    best_values = [None for _ in range(n_objectives)]
+
+    for trial in trials:
+
+        if trial.state in (
+            optuna.trial.TrialState.PRUNED,
+            optuna.trial.TrialState.FAIL,
+        ):
+            for i in range(n_objectives):
+                no_improvement_counts[i] += 1
+        elif trial.state == optuna.trial.TrialState.COMPLETE and trial.values is None:
+            logger.error(
+                f"Trial {trial.number} has no values, but is marked as COMPLETE"
+            )
+            continue
+        elif (
+            trial.state == optuna.trial.TrialState.COMPLETE and trial.values is not None
+        ):
+            for i, temp_direction in enumerate(temp_directions):
+                value = trial.values[i]
+                best_value = best_values[i]
+                if (
+                    best_value is None
+                    or (
+                        best_value >= 0
+                        and temp_direction == "maximize"
+                        and value > best_value * (1.0 + min_percentage_improvement)
+                    )
+                    or (
+                        best_value >= 0
+                        and temp_direction == "minimize"
+                        and value < best_value * (1.0 - min_percentage_improvement)
+                    )
+                    or (
+                        best_value < 0
+                        and temp_direction == "maximize"
+                        and value > best_value * (1.0 - min_percentage_improvement)
+                    )
+                    or (
+                        best_value < 0
+                        and temp_direction == "minimize"
+                        and value < best_value * (1.0 + min_percentage_improvement)
+                    )
+                ):
+                    best_values[i] = value
+                    no_improvement_counts[i] = 0
+                else:
+                    no_improvement_counts[i] += 1
+
+    return no_improvement_counts, best_values  # type: ignore
+
+
 def execute_simple_study(
     hyper_name: str,
     study_name: str,
@@ -37,7 +103,12 @@ def execute_simple_study(
     metadata: Optional[dict] = None,
     append_trials: Optional[list[dict]] = None,
     hyper_suffix: str = "hyper",
+    study_attributes: Optional[dict] = None,
 ):
+
+    if study_attributes is None:
+        study_attributes = {}
+
     if metadata is None:
         metadata = {}
     else:
@@ -75,6 +146,13 @@ def execute_simple_study(
         load_if_exists=True,
         storage=f"sqlite:///{sql_path}",
     )
+    study.set_user_attr("study_attributes", study_attributes)
+
+    no_improvement_count, best_value = get_existing_trials_info_multiobj(
+        study.get_trials(),
+        min_percentage_improvement,
+        directions="maximize",
+    )
 
     early_callback = None
     if patience > 0:
@@ -91,13 +169,21 @@ def execute_simple_study(
         if not exists:
             study.enqueue_trial(trial_params, skip_if_exists=True)
 
-    study.optimize(
-        func=create_objective_func(),
-        n_trials=n_trials,
-        callbacks=[early_callback] if early_callback else None,
-        timeout=optimization_timeout,
-        gc_after_trial=True,
-    )
+    if not (patience > 0 and any(count >= patience for count in no_improvement_count)):
+        study.optimize(
+            func=create_objective_func(),
+            n_trials=n_trials,
+            callbacks=[early_callback] if early_callback else None,
+            timeout=optimization_timeout,
+            gc_after_trial=True,
+        )
+    else:
+        logger.warning(
+            f"Early stopping activated before starting optimization for {hyper_name}-{study_name}."
+        )
+        logger.warning(
+            f"No improvement counts: {no_improvement_count} with patience {patience}."
+        )
 
     study_time_sum = sum(
         trial.duration.total_seconds() if trial.duration is not None else 0

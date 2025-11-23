@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Tuple, Literal, Optional, override
+from typing import Dict, List, Tuple, Literal, Optional, Type, override
 
 import numpy as np
 import pickle as pkl
@@ -13,12 +13,21 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_DATASETS,
     BaseDetectionAdapter,
 )
-from ml_carbucks.utils.ensembling import (
+from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter
+from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter
+from ml_carbucks.adapters.UltralyticsAdapter import (
+    RtdetrUltralyticsAdapter,
+    YoloUltralyticsAdapter,
+)
+from ml_carbucks.utils.ensemble_merging import (
     ScoreDistribution,
     fuse_adapters_predictions,
 )
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks.utils.postprocessing import postprocess_evaluation_results
+from ml_carbucks.utils.postprocessing import (
+    postprocess_evaluation_results,
+    convert_pred2eval,
+)
 from ml_carbucks.utils.preprocessing import create_clean_loader
 
 logger = setup_logger(__name__)
@@ -48,22 +57,22 @@ class EnsembleModel(BaseDetectionAdapter):
     # --- MAIN METHODS ---
 
     def setup(self) -> "EnsembleModel":
-        for adapter in self.adapters:
-            adapter.setup()
+
+        if self.checkpoint is not None:
+            self._load_from_checkpoint(self.checkpoint)
+
+        else:
+            for adapter in self.adapters:
+                adapter.setup()
+
         return self
 
     def fit(self, datasets: ADAPTER_DATASETS) -> "EnsembleModel":
-        logger.warning(
-            "EnsembleModel.fit() called - fitting individual adapters from empty datasets."
-        )
         for i in range(len(self.adapters)):
-            self.adapters[i] = (
-                self.adapters[i]
-                .clone()
-                .set_params({"weights": "DEFAULT"})
-                .setup()
-                .fit(datasets=datasets)
+            logger.info(
+                f"Fitting adapter {i + 1}/{len(self.adapters)} - {self.adapters[i].__class__.__name__}"
             )
+            self.adapters[i] = self.adapters[i].fit(datasets=datasets)
 
         return self
 
@@ -89,7 +98,7 @@ class EnsembleModel(BaseDetectionAdapter):
             loader, desc="Ensemble loader", disable=not self.verbose
         ):
             batch_preds = self.predict(images)
-            predictions.extend(batch_preds)
+            predictions.extend([convert_pred2eval(pred) for pred in batch_preds])
             ground_truths.extend(
                 {
                     "boxes": target["boxes"],
@@ -147,9 +156,13 @@ class EnsembleModel(BaseDetectionAdapter):
 
     def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         obj = {
-            "class_data": self.__class__.__name__,
-            "adapters": [],
-            "params": self.get_params(skip=["adapters"]),
+            "class_data": {
+                "name": self.__class__.__name__,
+                "module": self.__class__.__module__,
+                "class_type": self.__class__,
+            },
+            "models": [],
+            "params": self.get_params(skip=["adapters", "checkpoint"]),
         }
         pickled_adapter_paths = []
         for idx, adapter in enumerate(self.adapters):
@@ -160,27 +173,60 @@ class EnsembleModel(BaseDetectionAdapter):
 
         for ppath in pickled_adapter_paths:
             adapter_pickle_dict = pkl.load(open(ppath, "rb"))
-            obj["adapters"].append(adapter_pickle_dict)
+            obj["models"].append(adapter_pickle_dict)
 
         save_path = Path(dir) / f"{prefix}ensemble_model{suffix}.pkl"
         pkl.dump(obj, open(save_path, "wb"))
 
         return save_path
 
-    def _load_from_checkpoint(self, checkpoint_path: Path, **kwargs) -> None:
-        raise NotImplementedError(
-            "EnsembleModel loading from checkpoint not implemented yet."
+    def _load_from_checkpoint(
+        self, checkpoint_path: str | Path | dict, **kwargs
+    ) -> None:
+        if isinstance(checkpoint_path, dict):
+            obj = checkpoint_path  # type: ignore
+        else:
+            obj = pkl.load(open(checkpoint_path, "rb"))
+
+        obj_class_name = obj["class_data"]["name"]
+        if obj_class_name != self.__class__.__name__:
+            raise ValueError(
+                f"Pickled adapter class mismatch: expected '{self.__class__.__name__}', got '{obj_class_name}'"
+            )
+
+        params = obj["params"]
+
+        # NOTE: perhaps temporary solution that should be improved
+        # perhaps could be replaced with adapter_dict["class_data"]["class_type"]
+        adaptername_to_class: Dict[str, Type[BaseDetectionAdapter]] = {
+            "FasterRcnnAdapter": FasterRcnnAdapter,
+            "YoloUltralyticsAdapter": YoloUltralyticsAdapter,
+            "RtdetrUltralyticsAdapter": RtdetrUltralyticsAdapter,
+            "EfficientDetAdapter": EfficientDetAdapter,
+        }
+
+        for adapter_dict in obj["models"]:
+            adapter_class_name = adapter_dict["class_data"]["name"]
+            if adapter_class_name not in adaptername_to_class:
+                raise ValueError(
+                    f"Unknown adapter class name '{adapter_class_name}' in checkpoint."
+                )
+            adapter_class = adaptername_to_class[adapter_class_name]
+            adapter = adapter_class(checkpoint=adapter_dict)
+            adapter = adapter.setup()
+            self.adapters.append(adapter)
+
+        self.set_params(params)
+
+    @override
+    def clone(self, clean: bool = False) -> "EnsembleModel":
+        cloned_adapters = [adapter.clone(clean=clean) for adapter in self.adapters]
+        cloned_params = self.get_params(skip=["adapters"])
+        cloned_ensemble = EnsembleModel(
+            adapters=cloned_adapters,
+            **cloned_params,
         )
-        # obj = pkl.load(open(path, "rb"))
-
-        # adapters = [
-        #     adapter_dict["class"].load_pickled(adapter_dict)
-        #     for adapter_dict in obj["adapters"]
-        # ]
-        # params = obj["params"]
-        # ensemble = cls(adapters=adapters, **params)
-
-        # return ensemble
+        return cloned_ensemble
 
 
 class EnsembleFacilitator:

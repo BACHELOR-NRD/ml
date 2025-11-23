@@ -43,19 +43,12 @@ class ADAPTER_METRICS(TypedDict, total=False):
     classes: Required[List[int]]
 
 
-class ADAPTER_PICKLE(TypedDict):
+class ADAPTER_CHECKPOINT(TypedDict):
     """Standardized structure for pickled adapter models."""
 
-    class_data: Required[str]
+    class_data: Required[Dict[str, Any]]
     params: Required[Dict[str, Any]]
-    saved_weights: Required[Dict[str, Any]]
-
-
-class ADAPTER_CHECKPOINT_WEIGHTS(TypedDict):
-    """Standardized structure for checkpoint weights."""
-
-    original_weights: Required[str]
-    saved_weights: Required[Dict[str, Any]]
+    model: Required[Dict[str, Any]]
 
 
 ADAPTER_DATASETS = List[Tuple[str | Path, str | Path]]
@@ -72,9 +65,8 @@ class BaseDetectionAdapter(ABC):
 
     # --- SETUP PARAMETERS ---
 
-    weights: str | Path | ADAPTER_CHECKPOINT_WEIGHTS = field(
-        default="DEFAULT", repr=False
-    )
+    weights: str | Path = field(default="DEFAULT")
+    checkpoint: Optional[str | Path | dict] = field(default=None, repr=False)
     device: str = field(init=False)
     model: Any = field(init=False, default=None, repr=False)
     verbose: bool = field(default=False)
@@ -173,12 +165,12 @@ class BaseDetectionAdapter(ABC):
             key: value for key, value in self.__dict__.items() if key not in skip_keys
         }
 
-    def clone(self, clean_saved_weights: bool = False) -> "BaseDetectionAdapter":
+    def clone(self, clean: bool = False) -> "BaseDetectionAdapter":
         """Create a new adapter instance with the same parameters."""
         cls = self.__class__
         params = self.get_params()
 
-        if clean_saved_weights and isinstance(params["weights"], dict):
-            params["weights"] = params["weights"]["original_weights"]
+        if clean:
+            params["checkpoint"] = None
 
         return cls(**params)

@@ -1,7 +1,7 @@
-import datetime as dt
+import datetime as dt  # noqa: F401
 from pathlib import Path
 from functools import partial
-from typing import Any, Dict, List, Type
+from typing import List, Type
 
 import pandas as pd
 
@@ -18,12 +18,12 @@ from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter  # noqa: F4
 from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter  # noqa: F401
 from ml_carbucks.ensemble.EnsembleModel import EnsembleModel
 from ml_carbucks.optmization.ensemble_objective import (
+    create_ensemble,
     create_objective,
     create_ensembling_opt_prestep,
 )
 from ml_carbucks.optmization.simple_study import execute_simple_study
 from ml_carbucks.utils.DatasetsPathManager import DatasetsPathManager
-from ml_carbucks.utils.ensembling import ScoreDistribution
 from ml_carbucks.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
@@ -50,7 +50,7 @@ def load_adapters_from_hyperopt(
     for file in hyperopt_models_dir.glob(load_pattern):
         for adapter_class in possible_adapter_classes:
             try:
-                adapter = adapter_class(weights=str(file)).setup().clone()
+                adapter = adapter_class(checkpoint=str(file)).setup().clone(clean=True)
                 adapters.append(adapter)
                 logger.info(f"Loaded adapter from {file}")
                 break
@@ -58,45 +58,6 @@ def load_adapters_from_hyperopt(
                 pass
 
     return adapters
-
-
-def create_ensemble(
-    adapters: List[BaseDetectionAdapter],
-    params: Dict[str, Any],
-    runtime: str,
-    distributions: List[ScoreDistribution],
-    results_dir: Path,
-    final_datasets: ADAPTER_DATASETS | None = None,
-) -> EnsembleModel:
-    """
-    A function that creates and fits an EnsembleModel from given adapters and parameters.
-    The idea is to create a final ensemble model that would be production ready.
-    """
-
-    # NOTE: this is quite stupid but necessary to clone,setup and clone without weights again
-    # 1. first clone disassociates the object from the original one (not strictly necessary here but good practice)
-    # 2. loads all hyperparameters and setups the adapter
-    # 3. finally, clone again but this time clean the saved weights to avoid carrying over any trained weights
-    ensemble_adapters = [
-        adapter.clone().setup().clone(clean_saved_weights=True) for adapter in adapters
-    ]
-    if final_datasets is None:
-        logger.warning(
-            "Full datasets for ensemble training not provided. EnsembleModel will be created without fitting."
-        )
-    else:
-        for i in range(len(ensemble_adapters)):
-            ensemble_adapters[i].setup().fit(final_datasets)
-
-    ensemble = EnsembleModel(
-        **params,
-        adapters=ensemble_adapters,
-        distributions=distributions,
-    )
-
-    ensemble.save(results_dir / "ensemble" / runtime, suffix=runtime)
-
-    return ensemble
 
 
 def main(
@@ -131,7 +92,6 @@ def main(
             adapters_predictions=adapters_predictions,
             ground_truths=ground_truths,
             distributions=distributions,
-            adapters_fold_scores=metadata["adapters_avg_fold_map_50"],
         ),
         patience=patience,
         min_percentage_improvement=min_percentage_improvement,
@@ -147,8 +107,10 @@ def main(
                 for fold in val_folds
                 for dataset in fold
             ],
-            "adapters_crossval_metrics": metadata["adapters_crossval_metrics"],
-            "adapters_avg_fold_map_50": metadata["adapters_avg_fold_map_50"],
+            **metadata,
+        },
+        study_attributes={
+            **metadata,
         },
         hyper_suffix="ensemble",
         # append_trials=[default_adapter_params], # NOTE: this could be added to add default ensenble params
@@ -172,36 +134,39 @@ def main(
 
 if __name__ == "__main__":
 
-    # NOTE: you can define your own adapters there instead of loading from hyperopt
+    # adapters = load_adapters_from_hyperopt("20251121_000000_standard_carbucks", load_pattern="best_pickled_Y*_model.pkl")
+    # runtime_prefix = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    # runtime_suffix = "ensemble_initial"
+    # runtime = f"{runtime_prefix}_{runtime_suffix}"
+
+    # NOTE: manual override for debugging
     adapters = [
         YoloUltralyticsAdapter(
-            weights="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/YoloUltralyticsAdapter_model.pkl"
-        ),
+            checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/YoloUltralyticsAdapter_model.pkl"
+        )
+        .setup()
+        .clone(clean=True),
         RtdetrUltralyticsAdapter(
-            weights="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/RtdetrUltralyticsAdapter_model.pkl"
-        ),
+            checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/RtdetrUltralyticsAdapter_model.pkl"
+        )
+        .setup()
+        .clone(clean=True),
         FasterRcnnAdapter(
-            weights="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/FasterRcnnAdapter_model.pkl"
-        ),
+            checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/FasterRcnnAdapter_model.pkl"
+        )
+        .setup()
+        .clone(clean=True),
         EfficientDetAdapter(
-            weights="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/EfficientDetAdapter_model.pkl"
-        ),
+            checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/EfficientDetAdapter_model.pkl"
+        )
+        .setup()
+        .clone(clean=True),
     ]
-    # adapters = load_adapters_from_hyperopt(
-    #     "20251121_000000_standard_carbucks", load_pattern="best_pickled_Y*_model.pkl"
-    # )
-    runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    runtime_suffix = "ensemble_initial"
+    runtime = "20251123_155224_ensemble_initial"
 
-    # NOTE: this is to override and should be rremoved in production
-    override_runtime = "20251123_155224_ensemble_initial"
     main(
         adapters=adapters,
-        runtime=(
-            runtime + "_" + runtime_suffix
-            if override_runtime is None
-            else override_runtime
-        ),
+        runtime=runtime,
         results_dir=OPTUNA_DIR,
         n_trials=400,
         patience=75,
