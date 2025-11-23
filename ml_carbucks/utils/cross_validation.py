@@ -79,13 +79,13 @@ def model_training(
     train_dataset: tuple,
     val_dataset: tuple,
     setup_ensemble: callable = None,
+    ensemble_args: dict = None,
 ) -> dict:
 
     if setup_ensemble:
-        setup_ensemble()
+         return setup_ensemble(train_dataset,val_dataset,best_params,ensemble_args)
     else:
         model: BaseDetectionAdapter = adapter_class(**best_params)
-
         model.setup()
         model.fit(train_dataset)
         metrics = model.evaluate(val_dataset)
