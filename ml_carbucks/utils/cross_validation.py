@@ -25,6 +25,15 @@ def stratified_cross_valitation(
     setup_ensemble: callable = None,
     ensemble_args: dict = None,
 ):
+    """Perform stratified cross-validation with optional ensemble setup.
+    Args:
+        hyper_results: Dictionary or path to JSON file containing hyperparameter optimization results.
+        results_dir: Directory to save cross-validation results.
+        dataset_dir: Directory containing dataset folds.
+        cv_folds: Number of cross-validation folds.
+        setup_ensemble: Optional callable to set up an ensemble model.
+        ensemble_args: Optional dictionary of arguments for the ensemble setup.
+        """
 
     logger = setup_logger(__name__)
     logger.info("Starting stratified cross-validation")
