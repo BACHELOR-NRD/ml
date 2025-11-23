@@ -29,6 +29,7 @@ from ml_carbucks.utils.preprocessing import (
 from ml_carbucks.utils.result_saver import ResultSaver
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_METRICS,
+    ADAPTER_PICKLE,
     BaseDetectionAdapter,
     ADAPTER_PREDICTION,
 )
@@ -61,35 +62,20 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     # --- MAIN METHODS ---
 
     def setup(self) -> "EfficientDetAdapter":
-        img_size = self.img_size
-
-        backbone = self.backbone
-        weights = self.weights
-
-        if weights == "DEFAULT":
-            weights = ""
-        elif isinstance(weights, dict):
-            logger.info(
-                "Weights provided as state_dict - will load after model creation."
-            )
-            weights = ""
-
-        extra_args = dict(image_size=(img_size, img_size))
-        self.model = create_model(
-            model_name=backbone,
-            bench_task="train",
-            num_classes=self.n_classes,
-            pretrained=weights == "",
-            checkpoint_path=str(weights),
-            # NOTE: we set it to True because we are using custom Mean Average Precision and it is easier that way
-            # custom anchor labeler would be good idea if the boxes had unusual sizes and aspect ratios -> worth remembering for future
-            bench_labeler=True,
-            checkpoint_ema=False,
-            **extra_args,
-        )
 
         if isinstance(self.weights, dict):
-            self.model.model.load_state_dict(self.weights)
+            raise ValueError(
+                "Weights should never be a dict at this point of execution."
+            )
+        elif Path(self.weights).is_file():
+            weights_enum = None
+        else:
+            weights_enum = ""
+
+        if weights_enum is None:
+            self._load_from_checkpoint(Path(self.weights))
+        else:
+            self._create_model_wrapper(img_size=self.img_size, backbone=self.backbone)
 
         self.model.to(self.device)
 
@@ -336,47 +322,82 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             raise RuntimeError("Validation metrics were not computed during debugging.")
         return val_metrics
 
-    def save_weights(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
-        save_path = Path(dir) / f"{prefix}model{suffix}.pth"
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(self.model.model.state_dict(), save_path)
-        return save_path
-
-    def save_pickled(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+    def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model{suffix}.pkl"
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
+        original_weights = (
+            self.weights["original_weights"]
+            if isinstance(self.weights, dict)
+            else self.weights
+        )
+
+        if not isinstance(self.weights, dict) and Path(self.weights).is_file():
+            raise ValueError(
+                "Weights cannot be a path to checkpoint when saving pickled adapter."
+            )
+
+        params = self.get_params(skip=["weights"])
+        params["weights"] = original_weights
+
         obj = {
-            "class": self.__class__,
-            "params": self.get_params(),
-            "weights": self.model.model.state_dict(),
+            "class_data": self.__class__.__name__,
+            "params": params,
+            "saved_weights": self.model.model.state_dict(),
         }
 
         pkl.dump(obj, open(save_path, "wb"))
 
         return save_path
 
-    @classmethod
-    def load_pickled(cls, path: str | Path) -> "EfficientDetAdapter":
-        obj = pkl.load(open(path, "rb"))
-        obj_class = obj["class"]
+    # --- HELPER METHODS ---
+    def _load_from_checkpoint(self, checkpoint_path: Path, **kwargs) -> None:
+        obj: ADAPTER_PICKLE = pkl.load(open(checkpoint_path, "rb"))
+        obj_class_data = obj["class_data"]
         obj_class_name = (
-            obj_class.__name__ if hasattr(obj_class, "__name__") else str(obj_class)
+            obj_class_data.__name__  # type: ignore
+            if hasattr(obj_class_data, "__name__")
+            else str(obj_class_data)
         )
-        if obj_class_name != cls.__name__:
+        if obj_class_name != self.__class__.__name__:
             raise ValueError(
-                f"Pickled adapter class mismatch: expected '{cls.__name__}', got '{obj_class_name}'"
+                f"Pickled adapter class mismatch: expected '{self.__class__.__name__}', got '{obj_class_name}'"
             )
 
-        setup_params = {
-            **obj["params"],
-            "weights": obj["weights"],
+        params = obj["params"]
+        params["weights"] = {
+            "original_weights": params["weights"],
+            "saved_weights": obj["saved_weights"],
         }
-        adapter = EfficientDetAdapter(**setup_params)
+        logger.warning("Overwriting adapter parameters with loaded pickled parameters.")
 
-        return adapter
+        self.set_params(params)
 
-    # --- HELPER METHODS ---
+        if not isinstance(self.weights, dict):
+            raise ValueError("Weights should be a dict after loading from checkpoint.")
+
+        self._create_model_wrapper(
+            img_size=self.img_size,
+            backbone=self.backbone,
+        )
+
+        self.model.model.load_state_dict(self.weights["saved_weights"])
+
+    def _create_model_wrapper(self, img_size: int, backbone: str) -> None:
+
+        extra_args = dict(image_size=(img_size, img_size))
+        self.model = create_model(
+            model_name=backbone,
+            bench_task="train",
+            num_classes=self.n_classes,
+            pretrained=True,
+            checkpoint_path="",
+            # NOTE: we set it to True because we are using custom Mean Average Precision and it is easier that way
+            # custom anchor labeler would be good idea if the boxes had unusual sizes and aspect ratios -> worth remembering for future
+            bench_labeler=True,
+            checkpoint_ema=False,
+            **extra_args,
+        )
 
     # Loaders
 
