@@ -17,7 +17,10 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
 )
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.postprocessing import postprocess_prediction_nms
-from ml_carbucks.utils.conversions import convert_coco_to_yolo
+from ml_carbucks.utils.conversions import (
+    convert_coco_to_yolo,
+    convert_coco_to_yolo_with_train_val,
+)
 
 logger = setup_logger(__name__)
 
@@ -151,8 +154,80 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         visualize: Literal["every", "last", "none"] = "none",
     ) -> ADAPTER_METRICS:
         # NOTE: fit function could be copied here with modifications to log per-epoch results
-        logger.error("Debugging not implemented for UltralyticsAdapter.")
-        raise NotImplementedError("Debug method is not implemented.")
+        if len(train_datasets) > 1 or len(val_datasets) > 1:
+            logger.error(
+                "Multiple datasets provided for debugging, but only the first of each will be used."
+            )
+            logger.error("Multi-dataset debugging is not yet supported.")
+            raise NotImplementedError("Multi-dataset debugging is not implemented.")
+
+        img_dir, ann_file = train_datasets[0]
+        val_img_dir, val_ann_file = val_datasets[0]
+
+        logger.info("Converting COCO annotations to YOLO format...")
+        data_yaml = convert_coco_to_yolo_with_train_val(
+            str(img_dir), str(ann_file), str(val_img_dir), str(val_ann_file)
+        )
+        logger.info(f"YOLO dataset YAML created at: {data_yaml}")
+        extra_params = dict()
+        if not self.training_augmentations:
+            logger.warning(
+                "Data augmentations are disabled. This may worsen model performance. It should only be used for debugging purposes."
+            )
+            extra_params.update(
+                {
+                    "hsv_h": 0.0,
+                    "hsv_s": 0.0,
+                    "hsv_v": 0.0,
+                    "translate": 0.0,
+                    "scale": 0.0,
+                    "shear": 0.0,
+                    "perspective": 0.0,
+                    "flipud": False,
+                    "fliplr": 0.0,
+                    "mosaic": 0.0,
+                    "mixup": 0.0,
+                    "erasing": 0.0,
+                    "auto_augment": None,
+                    "augment": False,
+                }
+            )
+
+        self.model.train(  # type: ignore
+            # --- Core parameters ---
+            data=data_yaml,
+            seed=self.seed,
+            name=results_name,
+            project=results_path,
+            save=True,
+            verbose=self.verbose,
+            val=True,
+            # --- Hyperparameters ---
+            epochs=self.epochs,
+            batch=self.batch_size,
+            imgsz=self.img_size,
+            lr0=self.lr,
+            momentum=self.momentum,
+            weight_decay=self.weight_decay,
+            optimizer=self.optimizer,
+            **extra_params,
+        )
+
+        results = self.model.val(
+            data=data_yaml,
+            verbose=self.verbose,
+            project=results_path,
+            name=results_name,
+        )
+
+        metrics: ADAPTER_METRICS = {
+            "map_50": results.results_dict["metrics/mAP50(B)"],
+            "map_50_95": results.results_dict["metrics/mAP50-95(B)"],
+            "map_75": -np.inf,  # FIXME: verify that the key is correct: results.results_dict["metrics/mAP75(B)"]
+            "classes": [],  # FIXME: needs to be added
+        }
+
+        return metrics
 
     def save_weights(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model{suffix}.pt"
