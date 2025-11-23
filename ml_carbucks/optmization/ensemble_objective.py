@@ -102,7 +102,6 @@ def create_ensembling_opt_prestep(
     Additioanlly, it saves these precomputed results to disk for future runs in case of debugging or re-running the optimization.
     """
     saved_prestep_path = results_dir / "ensemble" / runtime / f"prestep_{runtime}.pkl"
-    saved_prestep_path.parent.mkdir(parents=True, exist_ok=True)
 
     adapters_predictions: List[List[ADAPTER_PREDICTION]] = [
         [] for _ in range(len(adapters))
@@ -180,6 +179,7 @@ def create_ensembling_opt_prestep(
             calculate_score_distribution(preds) for preds in adapters_predictions
         ]
 
+        saved_prestep_path.parent.mkdir(parents=True, exist_ok=True)
         pkl.dump(
             (
                 adapters_predictions,

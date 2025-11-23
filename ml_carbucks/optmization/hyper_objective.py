@@ -66,12 +66,12 @@ def create_objective(
             if score > best_score:
                 best_score = score
 
-                _ = trial_adapter.save_pickled(
+                _ = trial_adapter.save(
                     dir=results_dir,
                     prefix=f"best_pickled_{adapter.__class__.__name__}_",
                 )
 
-            _ = trial_adapter.save_pickled(
+            _ = trial_adapter.save(
                 dir=results_dir,
                 prefix=f"last_pickled_{adapter.__class__.__name__}_",
             )

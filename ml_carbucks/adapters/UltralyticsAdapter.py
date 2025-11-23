@@ -4,7 +4,7 @@ import torch
 from typing_extensions import Literal
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple, Type
 
 import pickle as pkl
 from ultralytics.models.yolo import YOLO
@@ -12,6 +12,7 @@ from ultralytics.models.rtdetr import RTDETR
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_METRICS,
+    ADAPTER_PICKLE,
     BaseDetectionAdapter,
     ADAPTER_PREDICTION,
 )
@@ -229,13 +230,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
         return metrics
 
-    def save_weights(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
-        save_path = Path(dir) / f"{prefix}model{suffix}.pt"
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        self.model.save(save_path)  # type: ignore
-        return save_path
-
-    def save_pickled(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+    def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model{suffix}.pkl"
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -246,37 +241,70 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
         os.remove(weights_path)
 
-        obj = {
-            "class": self.__class__,
-            "params": self.get_params(),
-            "weights": weights,
+        # NOTE: weights can be either a version string, path to checkpoint or already loaded dict
+        # 1. if version string then we good
+        # 2. if path to checkpoint then we are not good
+        # 3. if already loaded dict then we good
+        original_weights = (
+            str(self.weights["original_weights"])
+            if isinstance(self.weights, dict)
+            else self.weights
+        )
+
+        if not isinstance(self.weights, dict) and Path(self.weights).is_file():
+            raise ValueError(
+                "Weights cannot be a path to checkpoint when saving pickled adapter."
+            )
+
+        params = self.get_params(skip=["weights"])
+        params["weights"] = original_weights
+
+        obj: ADAPTER_PICKLE = {
+            "class_data": self.__class__.__name__,
+            "params": params,
+            "saved_weights": weights,
         }
 
         pkl.dump(obj, open(save_path, "wb"))
 
         return save_path
 
-    @classmethod
-    def load_pickled(cls, path: str | Path) -> "BaseDetectionAdapter":
-        obj = pkl.load(open(path, "rb"))
-        obj_class = obj["class"]
-        obj_class_name = (
-            obj_class.__name__ if hasattr(obj_class, "__name__") else str(obj_class)
-        )
-        if obj_class_name != cls.__name__:
+    def _load_from_checkpoint(self, checkpoint_path: Path, **kwargs) -> None:
+        model_class: Optional[Type] = kwargs.get("model_class", None)
+        if model_class is None:
             raise ValueError(
-                f"Pickled adapter class mismatch: expected '{cls.__name__}', got '{obj_class_name}'"
+                "model_class must be provided as a keyword argument to _load_from_checkpoint."
             )
 
-        params = {
-            **obj["params"],
-            "weights": {
-                "weights": obj["weights"],
-                "path": path,
-            },
+        obj: ADAPTER_PICKLE = pkl.load(open(checkpoint_path, "rb"))
+        obj_class_data = obj["class_data"]
+        obj_class_name = (
+            obj_class_data.__name__  # type: ignore
+            if hasattr(obj_class_data, "__name__")
+            else str(obj_class_data)
+        )
+        if obj_class_name != self.__class__.__name__:
+            raise ValueError(
+                f"Pickled adapter class mismatch: expected '{self.__class__.__name__}', got '{obj_class_name}'"
+            )
+
+        params = obj["params"]
+        params["weights"] = {
+            "original_weights": params["weights"],
+            "saved_weights": obj["saved_weights"],
         }
-        adapter = cls(**params)
-        return adapter
+        logger.warning("Overwriting adapter parameters with loaded pickled parameters.")
+        self.set_params(params)
+
+        if not isinstance(self.weights, dict):
+            raise ValueError("Weights should be a dict after loading from checkpoint.")
+
+        saved_weights_actual = self.weights["saved_weights"]
+        temp_weights_path = Path(f"temp_UltralyticsAdapter_{model_class.__name__}.pt")
+
+        torch.save(saved_weights_actual, temp_weights_path)
+        self.model = model_class(str(temp_weights_path))
+        os.remove(temp_weights_path)
 
 
 @dataclass
@@ -284,18 +312,16 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
     # --- MAIN METHODS ---
 
     def setup(self) -> "YoloUltralyticsAdapter":
-        if self.weights == "DEFAULT":
-            self.weights = "yolo11l.pt"
-            self.model = YOLO(self.weights)  # type: ignore
-        elif isinstance(self.weights, dict):
-            # NOTE: Lol, this is a hacky way to load weights from a pickled object but works
-            weights_actual = self.weights["weights"]
-            weights_path = Path(f"temp_{self.weights['path'].stem}.pt")
 
-            torch.save(weights_actual, weights_path)
-            self.model = YOLO(str(weights_path))  # type: ignore
-            os.remove(weights_path)
+        if isinstance(self.weights, dict):
+            raise ValueError(
+                "Weights should never be a dict at this point of execution."
+            )
+        elif Path(self.weights).is_file():
+            self._load_from_checkpoint(Path(self.weights), model_class=YOLO)
         else:
+            if self.weights == "DEFAULT":
+                self.weights = "yolo11l.pt"
             self.model = YOLO(str(self.weights))  # type: ignore
 
         self.model.to(self.device)
@@ -346,19 +372,17 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
     # --- MAIN METHODS ---
 
     def setup(self) -> "RtdetrUltralyticsAdapter":
-        if self.weights == "DEFAULT":
-            self.weights = "rtdetr-l.pt"
-            self.model = RTDETR(self.weights)
-        elif isinstance(self.weights, dict):
-            # NOTE: Lol, this is a hacky way to load weights from a pickled object but works
-            weights_actual = self.weights["weights"]
-            weights_path = Path(f"temp_{self.weights['path'].stem}.pt")
 
-            torch.save(weights_actual, weights_path)
-            self.model = RTDETR(str(weights_path))
-            os.remove(weights_path)
+        if isinstance(self.weights, dict):
+            raise ValueError(
+                "Weights should never be a dict at this point of execution."
+            )
+        elif Path(self.weights).is_file():
+            self._load_from_checkpoint(Path(self.weights), model_class=RTDETR)
         else:
-            self.model = RTDETR(str(self.weights))
+            if self.weights == "DEFAULT":
+                self.weights = "rtdetr_resnet50_vd_fpn_1x_coco.pt"
+            self.model = RTDETR(str(self.weights))  # type: ignore
 
         self.model.to(self.device)
 

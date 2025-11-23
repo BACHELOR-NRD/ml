@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Literal, Optional, Tuple
+from typing import Any, List, Literal, Optional, Tuple
 
 import torch
 import numpy as np
@@ -18,6 +18,7 @@ from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_METRICS,
+    ADAPTER_PICKLE,
     ADAPTER_PREDICTION,
     BaseDetectionAdapter,
 )
@@ -62,37 +63,28 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     def setup(self) -> "FasterRcnnAdapter":
         logger.debug("Creating Faster R-CNN model...")
 
-        img_size = self.img_size
-
-        if self.weights in ("DEFAULT", "V1"):
+        if isinstance(self.weights, dict):
+            raise ValueError(
+                "Weights should never be a dict at this point of execution."
+            )
+        elif self.weights in ("DEFAULT", "V1"):
             weights_enum = FasterRCNN_ResNet50_FPN_Weights.DEFAULT
         elif self.weights == "V2":
             weights_enum = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
-        else:
+        elif Path(self.weights).is_file():
             weights_enum = None
-
-        self.model = fasterrcnn_resnet50_fpn(
-            weights=weights_enum,
-            min_size=img_size,
-            max_size=img_size,
-        )
-
-        in_features = self.model.roi_heads.box_predictor.cls_score.in_features  # type: ignore
-        self.model.roi_heads.box_predictor = FastRCNNPredictor(
-            in_features, self.n_classes + 1  # +1 for background
-        )
-
-        if isinstance(self.weights, str) and Path(self.weights).is_file():
-            checkpoint = torch.load(self.weights, map_location=self.device)  # type: ignore
-            self.model.load_state_dict(checkpoint)
-        elif isinstance(self.weights, dict):
-            # NOTE: at this point we assume that weights is already a checkpoint dict
-            self.model.load_state_dict(
-                self.weights
-            )  # NOTE: perhaps the weights need to be loaded onto correct device first?
-        elif weights_enum is None:
+        else:
             raise ValueError(
-                "Weights must be 'DEFAULT', 'V1', 'V2' or a valid path to a checkpoint or checkpoint itself"
+                "Weights must be 'DEFAULT', 'V1', 'V2' or a pickled checkpoint"
+            )
+
+        if weights_enum is None:
+            self._load_from_checkpoint(Path(self.weights))
+        else:
+            self._create_model_wrapper(
+                weights_enum=weights_enum,
+                img_size=self.img_size,
+                n_classes=self.n_classes,
             )
 
         self.model.to(self.device)
@@ -268,53 +260,87 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             raise RuntimeError("Validation metrics were not computed during debugging.")
         return val_metrics
 
-    def save_weights(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
-        save_path = Path(dir) / f"{prefix}model{suffix}.pth"
-        save_path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(self.model.state_dict(), save_path)
-        return save_path
-
-    def save_pickled(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+    def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         save_path = Path(dir) / f"{prefix}model{suffix}.pkl"
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
+        original_weights = (
+            self.weights["original_weights"]
+            if isinstance(self.weights, dict)
+            else self.weights
+        )
+
+        if not isinstance(self.weights, dict) and Path(self.weights).is_file():
+            raise ValueError(
+                "Weights cannot be a path to checkpoint when saving pickled adapter."
+            )
+
+        params = self.get_params(skip=["weights"])
+        params["weights"] = original_weights
+
         obj = {
-            "class": self.__class__,
-            "params": self.get_params(),
-            "weights": self.model.state_dict(),
+            "class_data": self.__class__.__name__,
+            "params": params,
+            "saved_weights": self.model.state_dict(),
         }
 
         pkl.dump(obj, open(save_path, "wb"))
 
         return save_path
 
-    @classmethod
-    def load_pickled(cls, path: str | Path) -> "FasterRcnnAdapter":
-        obj = pkl.load(open(path, "rb"))
-        obj_class = obj["class"]
+    # --- HELPER METHODS ---
+
+    def _load_from_checkpoint(self, checkpoint_path: Path, **kwargs) -> None:
+        obj: ADAPTER_PICKLE = pkl.load(open(checkpoint_path, "rb"))
+        obj_class_data = obj["class_data"]
         obj_class_name = (
-            obj_class.__name__ if hasattr(obj_class, "__name__") else str(obj_class)
+            obj_class_data.__name__  # type: ignore
+            if hasattr(obj_class_data, "__name__")
+            else str(obj_class_data)
         )
-        if obj_class_name != cls.__name__:
+        if obj_class_name != self.__class__.__name__:
             raise ValueError(
-                f"Pickled adapter class mismatch: expected '{cls.__name__}', got '{obj_class_name}'"
+                f"Pickled adapter class mismatch: expected '{self.__class__.__name__}', got '{obj_class_name}'"
             )
 
-        params = {
-            **obj["params"],
-            "weights": obj["weights"],
+        params = obj["params"]
+        params["weights"] = {
+            "original_weights": params["weights"],
+            "saved_weights": obj["saved_weights"],
         }
-
+        logger.warning("Overwriting adapter parameters with loaded pickled parameters.")
         # NOTE: this is for backward compatibility with older pickled models
         if "lr_backbone" in params:
             del params["lr_backbone"]
         if "weight_decay_backbone" in params:
             del params["weight_decay_backbone"]
 
-        adapter = FasterRcnnAdapter(**params)
-        return adapter
+        self.set_params(params)
 
-    # --- HELPER METHODS ---
+        if not isinstance(self.weights, dict):
+            raise ValueError("Weights should be a dict after loading from checkpoint.")
+
+        self._create_model_wrapper(
+            weights_enum=None,
+            img_size=self.img_size,
+            n_classes=self.n_classes,
+        )
+
+        self.model.load_state_dict(self.weights["saved_weights"])
+
+    def _create_model_wrapper(
+        self, weights_enum: Any, img_size: int, n_classes: int
+    ) -> None:
+        self.model = fasterrcnn_resnet50_fpn(
+            weights=weights_enum,
+            min_size=img_size,
+            max_size=img_size,
+        )
+
+        in_features = self.model.roi_heads.box_predictor.cls_score.in_features  # type: ignore
+        self.model.roi_heads.box_predictor = FastRCNNPredictor(
+            in_features, n_classes + 1  # +1 for background
+        )
 
     def _create_optimizer(self):
         # NOTE: Using different learning rates and weight decays for backbone and head

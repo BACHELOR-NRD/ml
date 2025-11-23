@@ -150,23 +150,15 @@ class EnsembleModel(BaseDetectionAdapter):
     ) -> ADAPTER_METRICS:
         raise NotImplementedError("EnsembleModel debugging not implemented yet.")
 
-    def save_weights(
-        self,
-        dir: Path | str,
-        prefix: str = "",
-        suffix: str = "",
-    ) -> Path:
-        raise NotImplementedError("EnsembleModel weights saving not implemented yet.")
-
-    def save_pickled(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+    def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         obj = {
-            "class": self.__class__,
+            "class_data": self.__class__.__name__,
             "adapters": [],
             "params": self.get_params(skip=["adapters"]),
         }
         pickled_adapter_paths = []
         for idx, adapter in enumerate(self.adapters):
-            apath = adapter.save_pickled(
+            apath = adapter.save(
                 dir=dir, prefix=f"adapter_{idx}_{prefix}", suffix=suffix
             )
             pickled_adapter_paths.append(apath)
@@ -180,19 +172,20 @@ class EnsembleModel(BaseDetectionAdapter):
 
         return save_path
 
-    @classmethod
-    def load_pickled(cls, path: str | Path) -> "EnsembleModel":
-        """Load pickled model from the specified path."""
-        obj = pkl.load(open(path, "rb"))
+    def _load_from_checkpoint(self, checkpoint_path: Path, **kwargs) -> None:
+        raise NotImplementedError(
+            "EnsembleModel loading from checkpoint not implemented yet."
+        )
+        # obj = pkl.load(open(path, "rb"))
 
-        adapters = [
-            adapter_dict["class"].load_pickled(adapter_dict)
-            for adapter_dict in obj["adapters"]
-        ]
-        params = obj["params"]
-        ensemble = cls(adapters=adapters, **params)
+        # adapters = [
+        #     adapter_dict["class"].load_pickled(adapter_dict)
+        #     for adapter_dict in obj["adapters"]
+        # ]
+        # params = obj["params"]
+        # ensemble = cls(adapters=adapters, **params)
 
-        return ensemble
+        # return ensemble
 
 
 class EnsembleFacilitator:

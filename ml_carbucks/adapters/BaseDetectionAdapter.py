@@ -43,6 +43,21 @@ class ADAPTER_METRICS(TypedDict, total=False):
     classes: Required[List[int]]
 
 
+class ADAPTER_PICKLE(TypedDict):
+    """Standardized structure for pickled adapter models."""
+
+    class_data: Required[str]
+    params: Required[Dict[str, Any]]
+    saved_weights: Required[Dict[str, Any]]
+
+
+class ADAPTER_CHECKPOINT_WEIGHTS(TypedDict):
+    """Standardized structure for checkpoint weights."""
+
+    original_weights: Required[str]
+    saved_weights: Required[Dict[str, Any]]
+
+
 ADAPTER_DATASETS = List[Tuple[str | Path, str | Path]]
 
 
@@ -57,7 +72,9 @@ class BaseDetectionAdapter(ABC):
 
     # --- SETUP PARAMETERS ---
 
-    weights: str | Path | dict = field(default="DEFAULT", repr=False)
+    weights: str | Path | ADAPTER_CHECKPOINT_WEIGHTS = field(
+        default="DEFAULT", repr=False
+    )
     device: str = field(init=False)
     model: Any = field(init=False, default=None, repr=False)
     verbose: bool = field(default=False)
@@ -106,23 +123,27 @@ class BaseDetectionAdapter(ABC):
         """Debug training and evaluation loops."""
         pass
 
-    @abstractmethod
-    def save_weights(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
-        """Save the model weights to the specified path."""
-        pass
+    # @abstractmethod
+    # def save_weights(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+    #     """Save the model weights to the specified path."""
+    #     pass
 
     @abstractmethod
-    def save_pickled(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
+    def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:
         """Save pickled model to the specified path."""
         pass
 
-    @classmethod
-    @abstractmethod
-    def load_pickled(cls, path: str | Path) -> "BaseDetectionAdapter":
-        """Load pickled model from the specified path."""
-        pass
+    # @classmethod
+    # @abstractmethod
+    # def load_pickled(cls, path: str | Path) -> "BaseDetectionAdapter":
+    #     """Load pickled model from the specified path."""
+    #     pass
 
     # --- HELPER METHODS ---
+
+    @abstractmethod
+    def _load_from_checkpoint(self, checkpoint_path: Path, **kwargs) -> None:
+        pass
 
     @staticmethod
     def _cuda_available() -> bool:
@@ -152,7 +173,12 @@ class BaseDetectionAdapter(ABC):
             key: value for key, value in self.__dict__.items() if key not in skip_keys
         }
 
-    def clone(self) -> "BaseDetectionAdapter":
+    def clone(self, clean_saved_weights: bool = False) -> "BaseDetectionAdapter":
         """Create a new adapter instance with the same parameters."""
         cls = self.__class__
-        return cls(**self.get_params())
+        params = self.get_params()
+
+        if clean_saved_weights and isinstance(params["weights"], dict):
+            params["weights"] = params["weights"]["original_weights"]
+
+        return cls(**params)

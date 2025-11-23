@@ -29,7 +29,9 @@ from ml_carbucks.utils.logger import setup_logger
 logger = setup_logger(__name__)
 
 
-def load_adapters_from_hyperopt(hyper_runtime: str) -> List[BaseDetectionAdapter]:
+def load_adapters_from_hyperopt(
+    hyper_runtime: str, load_pattern: str = "best_pickled_*_model.pkl"
+) -> List[BaseDetectionAdapter]:
     """
     A function that takes care of automatically loading all the adapters from given hyperopt runtime.
     """
@@ -45,10 +47,10 @@ def load_adapters_from_hyperopt(hyper_runtime: str) -> List[BaseDetectionAdapter
 
     adapters: List[BaseDetectionAdapter] = []
 
-    for file in hyperopt_models_dir.glob("best_pickled_*_model.pkl"):
+    for file in hyperopt_models_dir.glob(load_pattern):
         for adapter_class in possible_adapter_classes:
             try:
-                adapter = adapter_class.load_pickled(file)
+                adapter = adapter_class(weights=str(file)).setup().clone()
                 adapters.append(adapter)
                 logger.info(f"Loaded adapter from {file}")
                 break
@@ -87,7 +89,7 @@ def create_ensemble(
         distributions=distributions,
     )
 
-    ensemble.save_pickled(results_dir / "ensemble" / runtime, suffix=runtime)
+    ensemble.save(results_dir / "ensemble" / runtime, suffix=runtime)
 
     return ensemble
 
@@ -166,7 +168,9 @@ if __name__ == "__main__":
 
     # NOTE: you can define your own adapters there instead of loading from hyperopt
     # adapters = [<your own list of adapters>]
-    adapters = load_adapters_from_hyperopt("20251121_000000_standard_carbucks")
+    adapters = load_adapters_from_hyperopt(
+        "20251121_000000_standard_carbucks", load_pattern="best_pickled_Y*_model.pkl"
+    )
     runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     runtime_suffix = "ensemble_initial"
 
