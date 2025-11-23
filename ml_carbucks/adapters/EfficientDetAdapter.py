@@ -334,7 +334,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             else self.weights
         )
 
-        if not isinstance(self.weights, dict) and Path(self.weights).is_file():
+        if not isinstance(original_weights, dict) and Path(original_weights).is_file():
             raise ValueError(
                 "Weights cannot be a path to checkpoint when saving pickled adapter."
             )

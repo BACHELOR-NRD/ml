@@ -32,8 +32,10 @@ class DatasetsPathManager:
     CARBUCKS_VAL_STANDARD: ADAPTER_DATASETS = cast(
         ADAPTER_DATASETS,
         [
-            DATA_DIR / "final_carbucks" / "standard" / "images" / "val",
-            DATA_DIR / "final_carbucks" / "standard" / "instances_val_curated.json",
+            (
+                DATA_DIR / "final_carbucks" / "standard" / "images" / "val",
+                DATA_DIR / "final_carbucks" / "standard" / "instances_val_curated.json",
+            )
         ],
     )
     """Datasets used for simple worklows validation development on standard CarBucks data."""
