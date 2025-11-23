@@ -30,7 +30,7 @@ def create_objective(
                 trial, adapter.__class__.__name__
             )
 
-            trial_adapter = adapter.clone()
+            trial_adapter = adapter.clone(clean=True)
             trial_adapter = trial_adapter.set_params(params)
             trial_adapter.setup()
 

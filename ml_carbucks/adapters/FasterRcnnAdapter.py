@@ -18,7 +18,7 @@ from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_METRICS,
-    ADAPTER_PICKLE,
+    ADAPTER_CHECKPOINT,
     ADAPTER_PREDICTION,
     BaseDetectionAdapter,
 )
@@ -26,6 +26,7 @@ from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.postprocessing import (
     convert_pred2eval,
     postprocess_prediction_nms,
+    weighted_boxes_fusion,
     postprocess_evaluation_results,
 )
 from ml_carbucks.utils.preprocessing import (
@@ -52,6 +53,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     optimizer: FASTERRCNN_OPTIMIZER_OPTIONS = "AdamW"
     clip_gradients: Optional[float] = None
     momentum: float = 0.9  # Used for SGD and RMSprop
+    strategy: Literal["nms", "wbf"] = "nms"
 
     # --- SETUP PARAMETERS ---
 
@@ -61,30 +63,27 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     # --- MAIN METHODS ---
 
     def setup(self) -> "FasterRcnnAdapter":
-        logger.debug("Creating Faster R-CNN model...")
+        if self.weights == "DEFAULT":
+            self.weights = "V1"
 
-        if isinstance(self.weights, dict):
-            raise ValueError(
-                "Weights should never be a dict at this point of execution."
-            )
-        elif self.weights in ("DEFAULT", "V1"):
-            weights_enum = FasterRCNN_ResNet50_FPN_Weights.DEFAULT
-        elif self.weights == "V2":
-            weights_enum = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
-        elif Path(self.weights).is_file():
-            weights_enum = None
-        else:
-            raise ValueError(
-                "Weights must be 'DEFAULT', 'V1', 'V2' or a pickled checkpoint"
-            )
+        if self.checkpoint is not None:
+            self._load_from_checkpoint(self.checkpoint)  # type: ignore
 
-        if weights_enum is None:
-            self._load_from_checkpoint(Path(self.weights))
-        else:
+        elif self.weights in ("V1", "V2"):
+            if self.weights == "V1":
+                weights_enum = FasterRCNN_ResNet50_FPN_Weights.DEFAULT
+            else:
+                weights_enum = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
+
             self._create_model_wrapper(
                 weights_enum=weights_enum,
                 img_size=self.img_size,
                 n_classes=self.n_classes,
+            )
+
+        else:
+            raise ValueError(
+                "Weights must be 'DEFAULT', 'V1', 'V2' or a pickled checkpoint"
             )
 
         self.model.to(self.device)
@@ -163,15 +162,27 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
                     scores = output["scores"]
                     labels = output["labels"]
 
-                    processed_pred = postprocess_prediction_nms(
-                        boxes,
-                        scores,
-                        labels,
-                        # NOTE: those values are hardcoded for evaluation but could be parameterized if needed
-                        conf_threshold=0.02,
-                        iou_threshold=0.7,
-                        max_detections=300,
-                    )
+                    # NOTE: those threshold values are hardcoded for evaluation but could be parameterized if needed
+                    if self.strategy == "nms":
+                        processed_pred = postprocess_prediction_nms(
+                            boxes,
+                            scores,
+                            labels,
+                            conf_threshold=0.02,
+                            iou_threshold=0.7,
+                            max_detections=300,
+                        )
+                    elif self.strategy == "wbf":
+                        processed_pred = weighted_boxes_fusion(
+                            boxes,
+                            scores,
+                            labels,
+                            conf_threshold=0.02,
+                            iou_threshold=0.7,
+                            max_detections=300,
+                        )
+                    else:
+                        raise ValueError(f"Unsupported strategy: {self.strategy}")
 
                     predictions_processed.append(convert_pred2eval(processed_pred))
 
@@ -207,14 +218,26 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             scores = output["scores"]
             labels = output["labels"]
 
-            prediction = postprocess_prediction_nms(
-                boxes,
-                scores,
-                labels,
-                conf_threshold,
-                iou_threshold,
-                max_detections,
-            )
+            if self.strategy == "nms":
+                prediction = postprocess_prediction_nms(
+                    boxes,
+                    scores,
+                    labels,
+                    conf_threshold,
+                    iou_threshold,
+                    max_detections,
+                )
+            elif self.strategy == "wbf":
+                prediction = weighted_boxes_fusion(
+                    boxes,
+                    scores,
+                    labels,
+                    conf_threshold,
+                    iou_threshold,
+                    max_detections,
+                )
+            else:
+                raise ValueError(f"Unsupported strategy: {self.strategy}")
 
             processed_predictions.append(prediction)
 
@@ -264,24 +287,16 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         save_path = Path(dir) / f"{prefix}model{suffix}.pkl"
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
-        original_weights = (
-            self.weights["original_weights"]
-            if isinstance(self.weights, dict)
-            else self.weights
-        )
-
-        if not isinstance(original_weights, dict) and Path(original_weights).is_file():
-            raise ValueError(
-                "Weights cannot be a path to checkpoint when saving pickled adapter."
-            )
-
-        params = self.get_params(skip=["weights"])
-        params["weights"] = original_weights
+        params = self.get_params(skip=["checkpoint"])
 
         obj = {
-            "class_data": self.__class__.__name__,
+            "class_data": {
+                "name": self.__class__.__name__,
+                "module": self.__class__.__module__,
+                "class_type": self.__class__,
+            },
             "params": params,
-            "saved_weights": self.model.state_dict(),
+            "model": self.model.state_dict(),
         }
 
         pkl.dump(obj, open(save_path, "wb"))
@@ -290,35 +305,25 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
     # --- HELPER METHODS ---
 
-    def _load_from_checkpoint(self, checkpoint_path: Path, **kwargs) -> None:
-        obj: ADAPTER_PICKLE = pkl.load(open(checkpoint_path, "rb"))
-        obj_class_data = obj["class_data"]
-        obj_class_name = (
-            obj_class_data.__name__  # type: ignore
-            if hasattr(obj_class_data, "__name__")
-            else str(obj_class_data)
-        )
+    def _load_from_checkpoint(
+        self, checkpoint_path: str | Path | dict, **kwargs
+    ) -> None:
+        if isinstance(checkpoint_path, dict):
+            obj: ADAPTER_CHECKPOINT = checkpoint_path  # type: ignore
+        else:
+            obj: ADAPTER_CHECKPOINT = pkl.load(open(checkpoint_path, "rb"))
+
+        obj_class_name = obj["class_data"]["name"]
         if obj_class_name != self.__class__.__name__:
             raise ValueError(
                 f"Pickled adapter class mismatch: expected '{self.__class__.__name__}', got '{obj_class_name}'"
             )
 
         params = obj["params"]
-        params["weights"] = {
-            "original_weights": params["weights"],
-            "saved_weights": obj["saved_weights"],
-        }
+
         logger.warning("Overwriting adapter parameters with loaded pickled parameters.")
-        # NOTE: this is for backward compatibility with older pickled models
-        if "lr_backbone" in params:
-            del params["lr_backbone"]
-        if "weight_decay_backbone" in params:
-            del params["weight_decay_backbone"]
 
         self.set_params(params)
-
-        if not isinstance(self.weights, dict):
-            raise ValueError("Weights should be a dict after loading from checkpoint.")
 
         self._create_model_wrapper(
             weights_enum=None,
@@ -326,7 +331,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             n_classes=self.n_classes,
         )
 
-        self.model.load_state_dict(self.weights["saved_weights"])
+        self.model.load_state_dict(obj["model"])
 
     def _create_model_wrapper(
         self, weights_enum: Any, img_size: int, n_classes: int

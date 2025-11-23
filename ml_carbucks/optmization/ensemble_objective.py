@@ -13,8 +13,9 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_PREDICTION,
     BaseDetectionAdapter,
 )
+from ml_carbucks.ensemble.EnsembleModel import EnsembleModel
 from ml_carbucks.optmization.TrialParamWrapper import TrialParamWrapper
-from ml_carbucks.utils.ensembling import (
+from ml_carbucks.utils.ensemble_merging import (
     ScoreDistribution,
     calculate_score_distribution,
     fuse_adapters_predictions,
@@ -33,7 +34,6 @@ def create_objective(
     adapters_predictions: List[List[ADAPTER_PREDICTION]],
     ground_truths: List[dict],
     distributions: List[ScoreDistribution],
-    adapters_fold_scores: List[List[float]],
 ) -> Callable:
     """
     Ensemble optimization objective function creator.
@@ -71,7 +71,6 @@ def create_objective(
             metric.update(processed_predictions, ground_truths)  # type: ignore
             processed = postprocess_evaluation_results(metric.compute())
 
-            trial.set_user_attr("adapters_fold_scores", adapters_fold_scores)
             score = processed["map_50"]
 
             return score
@@ -104,6 +103,8 @@ def create_ensembling_opt_prestep(
 
     Additioanlly, it saves these precomputed results to disk for future runs in case of debugging or re-running the optimization.
     """
+
+    # NOTE: this function is a MESS but it dont want to fix it now
     saved_prestep_path = results_dir / "ensemble" / runtime / f"prestep_{runtime}.pkl"
 
     adapters_predictions: List[List[ADAPTER_PREDICTION]] = [
@@ -114,24 +115,25 @@ def create_ensembling_opt_prestep(
     adapters_crossval_metrics: List[List[ADAPTER_METRICS]] = [
         [] for _ in range(len(adapters))
     ]
+    adapters_dataset_metrics: List[ADAPTER_METRICS] = []
 
     if saved_prestep_path.exists():
+        obj = pkl.load(open(saved_prestep_path, "rb"))
         (
             adapters_predictions,
             ground_truths,
             distributions,
             adapters_crossval_metrics,
-        ) = pkl.load(open(saved_prestep_path, "rb"))
-    else:
+            adapters_dataset_metrics,
+        ) = obj
 
+    else:
+        all_dataset_evaluators = [MeanAveragePrecision() for _ in range(len(adapters))]
         for fold_idx in range(len(train_folds)):
             fold_train_datasets = train_folds[fold_idx]
             fold_val_datasets = val_folds[fold_idx]
 
-            new_adapters = [
-                adapter.clone().setup().clone(clean_saved_weights=True)
-                for adapter in adapters
-            ]
+            new_adapters = [adapter.clone().setup() for adapter in adapters]
 
             logger.info(f"Processing fold {fold_idx + 1}/{len(train_folds)}")
 
@@ -183,6 +185,7 @@ def create_ensembling_opt_prestep(
                     adapters_predictions[adapter_idx].extend(eval_preds)  # type: ignore
 
                     evaluators_list[adapter_idx].update(eval_preds, eval_gts)
+                    all_dataset_evaluators[adapter_idx].update(eval_preds, eval_gts)
 
             for adapter_idx, evaluator in enumerate(evaluators_list):
                 fold_metrics = postprocess_evaluation_results(evaluator.compute())
@@ -192,6 +195,10 @@ def create_ensembling_opt_prestep(
             calculate_score_distribution(preds) for preds in adapters_predictions
         ]
 
+        for adapter_idx, evaluator in enumerate(all_dataset_evaluators):
+            dataset_metrics = postprocess_evaluation_results(evaluator.compute())
+            adapters_dataset_metrics.append(dataset_metrics)
+
         saved_prestep_path.parent.mkdir(parents=True, exist_ok=True)
         pkl.dump(
             (
@@ -199,6 +206,7 @@ def create_ensembling_opt_prestep(
                 ground_truths,
                 distributions,
                 adapters_crossval_metrics,
+                adapters_dataset_metrics,
             ),
             open(saved_prestep_path, "wb"),
         )
@@ -216,6 +224,45 @@ def create_ensembling_opt_prestep(
             / len(adapter_metrics)
             for adapter_metrics in adapters_crossval_metrics
         ],
+        "adapters_dataset_metrics": adapters_dataset_metrics,
+        "adapters_dataset_map_50": [
+            adapter_metrics["map_50"] for adapter_metrics in adapters_dataset_metrics
+        ],
     }
 
     return adapters_predictions, ground_truths, distributions, metadata
+
+
+def create_ensemble(
+    adapters: List[BaseDetectionAdapter],
+    params: Dict[str, Any],
+    runtime: str,
+    distributions: List[ScoreDistribution],
+    results_dir: Path,
+    final_datasets: ADAPTER_DATASETS | None = None,
+) -> EnsembleModel:
+    """
+    A function that creates and fits an EnsembleModel from given adapters and parameters.
+    The idea is to create a final ensemble model that would be production ready.
+    """
+
+    # NOTE: this is quite stupid but necessary to clone,setup and clone without weights again
+    # 1. first clone disassociates the object from the original one (not strictly necessary here but good practice)
+    # 2. loads all hyperparameters and setups the adapter
+    # 3. finally, clone again but this time clean the saved weights to avoid carrying over any trained weights
+    ensemble_adapters = [adapter.clone() for adapter in adapters]
+    ensemble_model = EnsembleModel(
+        **params,
+        adapters=ensemble_adapters,
+        distributions=distributions,
+    )
+    if final_datasets is None:
+        logger.warning(
+            "Full datasets for ensemble training not provided. EnsembleModel will be created without fitting."
+        )
+    else:
+        ensemble_model.setup().fit(final_datasets)
+
+    ensemble_model.save(results_dir / "ensemble" / runtime, suffix=runtime)
+
+    return ensemble_model

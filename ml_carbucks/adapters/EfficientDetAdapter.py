@@ -20,6 +20,7 @@ from ml_carbucks.utils.postprocessing import (
     convert_pred2eval,
     postprocess_prediction_nms,
     postprocess_evaluation_results,
+    weighted_boxes_fusion,
 )
 from ml_carbucks.utils.preprocessing import (
     create_clean_loader,
@@ -28,8 +29,8 @@ from ml_carbucks.utils.preprocessing import (
 )
 from ml_carbucks.utils.result_saver import ResultSaver
 from ml_carbucks.adapters.BaseDetectionAdapter import (
+    ADAPTER_CHECKPOINT,
     ADAPTER_METRICS,
-    ADAPTER_PICKLE,
     BaseDetectionAdapter,
     ADAPTER_PREDICTION,
 )
@@ -54,30 +55,32 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     lr: float = 8e-3
     weight_decay: float = 9e-6
     loader: Literal["inbuilt", "custom"] = "inbuilt"
+    strategy: Literal["nms", "wbf"] = "nms"
 
     # --- SETUP PARAMETERS ---
 
-    backbone: str = "tf_efficientdet_d0"
     training_augmentations: bool = True
     n_classes: int = 3
 
     # --- MAIN METHODS ---
 
     def setup(self) -> "EfficientDetAdapter":
+        if self.weights == "DEFAULT":
+            self.weights = "tf_efficientdet_d0"
 
-        if isinstance(self.weights, dict):
-            raise ValueError(
-                "Weights should never be a dict at this point of execution."
-            )
+        if self.checkpoint is not None:
+            self._load_from_checkpoint(self.checkpoint)
+
         elif Path(self.weights).is_file():
-            weights_enum = None
-        else:
-            weights_enum = ""
+            raise ValueError(
+                "Weights cannot be a path to checkpoint when setting up EfficientDetAdapter."
+            )
 
-        if weights_enum is None:
-            self._load_from_checkpoint(Path(self.weights))
         else:
-            self._create_model_wrapper(img_size=self.img_size, backbone=self.backbone)
+
+            self._create_model_wrapper(
+                img_size=self.img_size, backbone=str(self.weights)
+            )
 
         self.model.to(self.device)
 
@@ -197,15 +200,27 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                         gt_boxes = gt_boxes_xyxy * scale
                         gt_labels = ctargets["cls"][i][gt_mask].long()
 
-                    processed_pred = postprocess_prediction_nms(
-                        pred_boxes,
-                        pred_scores,
-                        pred_labels,
-                        # NOTE: those values are hardcoded for evaluation but could be parameterized if needed
-                        conf_threshold=0.02,
-                        iou_threshold=0.7,
-                        max_detections=300,
-                    )
+                    # NOTE: those threshold values are hardcoded for evaluation but could be parameterized if needed
+                    if self.strategy == "nms":
+                        processed_pred = postprocess_prediction_nms(
+                            pred_boxes,
+                            pred_scores,
+                            pred_labels,
+                            conf_threshold=0.02,
+                            iou_threshold=0.7,
+                            max_detections=300,
+                        )
+                    elif self.strategy == "wbf":
+                        processed_pred = weighted_boxes_fusion(
+                            pred_boxes,
+                            pred_scores,
+                            pred_labels,
+                            conf_threshold=0.02,
+                            iou_threshold=0.7,
+                            max_detections=300,
+                        )
+                    else:
+                        raise ValueError(f"Unsupported strategy: {self.strategy}")
 
                     evaluator.update(
                         preds=[convert_pred2eval(processed_pred)],  # type: ignore
@@ -262,14 +277,24 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                 scores = pred[:, 4]
                 labels_idx = pred[:, 5]
 
-                prediction = postprocess_prediction_nms(
-                    boxes,
-                    scores,
-                    labels_idx,
-                    conf_threshold,
-                    iou_threshold,
-                    max_detections,
-                )
+                if self.strategy == "nms":
+                    prediction = postprocess_prediction_nms(
+                        boxes,
+                        scores,
+                        labels_idx,
+                        conf_threshold,
+                        iou_threshold,
+                        max_detections,
+                    )
+                else:
+                    prediction = weighted_boxes_fusion(
+                        boxes,
+                        scores,
+                        labels_idx,
+                        conf_threshold,
+                        iou_threshold,
+                        max_detections,
+                    )
 
                 predictions.append(prediction)
 
@@ -328,24 +353,16 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         save_path = Path(dir) / f"{prefix}model{suffix}.pkl"
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
-        original_weights = (
-            self.weights["original_weights"]
-            if isinstance(self.weights, dict)
-            else self.weights
-        )
-
-        if not isinstance(original_weights, dict) and Path(original_weights).is_file():
-            raise ValueError(
-                "Weights cannot be a path to checkpoint when saving pickled adapter."
-            )
-
-        params = self.get_params(skip=["weights"])
-        params["weights"] = original_weights
+        params = self.get_params(skip=["checkpoint"])
 
         obj = {
-            "class_data": self.__class__.__name__,
+            "class_data": {
+                "name": self.__class__.__name__,
+                "module": self.__class__.__module__,
+                "class_type": self.__class__,
+            },
             "params": params,
-            "saved_weights": self.model.model.state_dict(),
+            "model": self.model.model.state_dict(),
         }
 
         pkl.dump(obj, open(save_path, "wb"))
@@ -353,37 +370,32 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         return save_path
 
     # --- HELPER METHODS ---
-    def _load_from_checkpoint(self, checkpoint_path: Path, **kwargs) -> None:
-        obj: ADAPTER_PICKLE = pkl.load(open(checkpoint_path, "rb"))
-        obj_class_data = obj["class_data"]
-        obj_class_name = (
-            obj_class_data.__name__  # type: ignore
-            if hasattr(obj_class_data, "__name__")
-            else str(obj_class_data)
-        )
+    def _load_from_checkpoint(
+        self, checkpoint_path: str | Path | dict, **kwargs
+    ) -> None:
+        if isinstance(checkpoint_path, dict):
+            obj: ADAPTER_CHECKPOINT = checkpoint_path  # type: ignore
+        else:
+            obj: ADAPTER_CHECKPOINT = pkl.load(open(checkpoint_path, "rb"))
+
+        obj_class_name = obj["class_data"]["name"]
         if obj_class_name != self.__class__.__name__:
             raise ValueError(
                 f"Pickled adapter class mismatch: expected '{self.__class__.__name__}', got '{obj_class_name}'"
             )
 
         params = obj["params"]
-        params["weights"] = {
-            "original_weights": params["weights"],
-            "saved_weights": obj["saved_weights"],
-        }
+
         logger.warning("Overwriting adapter parameters with loaded pickled parameters.")
 
         self.set_params(params)
 
-        if not isinstance(self.weights, dict):
-            raise ValueError("Weights should be a dict after loading from checkpoint.")
-
         self._create_model_wrapper(
             img_size=self.img_size,
-            backbone=self.backbone,
+            backbone=str(self.weights),
         )
 
-        self.model.model.load_state_dict(self.weights["saved_weights"])
+        self.model.model.load_state_dict(obj["model"])
 
     def _create_model_wrapper(self, img_size: int, backbone: str) -> None:
 

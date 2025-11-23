@@ -12,12 +12,15 @@ from ultralytics.models.rtdetr import RTDETR
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_METRICS,
-    ADAPTER_PICKLE,
+    ADAPTER_CHECKPOINT,
     BaseDetectionAdapter,
     ADAPTER_PREDICTION,
 )
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks.utils.postprocessing import postprocess_prediction_nms
+from ml_carbucks.utils.postprocessing import (
+    postprocess_prediction_nms,
+    weighted_boxes_fusion,
+)
 from ml_carbucks.utils.conversions import (
     convert_coco_to_yolo,
     convert_coco_to_yolo_with_train_val,
@@ -41,6 +44,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     # --- SETUP PARAMETERS ---
 
     seed: int = 42
+    strategy: Literal["nms", "wbf"] = "nms"
     training_save: bool = False
     project_dir: str | Path | None = None
     name: str | None = None
@@ -241,73 +245,52 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
         os.remove(weights_path)
 
-        # NOTE: weights can be either a version string, path to checkpoint or already loaded dict
-        # 1. if version string then we good
-        # 2. if path to checkpoint then we are not good
-        # 3. if already loaded dict then we good
-        original_weights = (
-            str(self.weights["original_weights"])
-            if isinstance(self.weights, dict)
-            else self.weights
-        )
+        params = self.get_params(skip=["checkpoint"])
 
-        # NOTE: original weights cannot be a path to the adapter checkpoint when saving pickled adapter
-        if (
-            not isinstance(original_weights, dict)
-            and Path(original_weights).is_file()
-            and Path(original_weights).suffix == ".pkl"
-        ):
-            raise ValueError(
-                "Weights cannot be a path to checkpoint when saving pickled adapter."
-            )
-
-        params = self.get_params(skip=["weights"])
-        params["weights"] = original_weights
-
-        obj: ADAPTER_PICKLE = {
-            "class_data": self.__class__.__name__,
+        obj = {
+            "class_data": {
+                "name": self.__class__.__name__,
+                "module": self.__class__.__module__,
+                "class": self.__class__,
+            },
             "params": params,
-            "saved_weights": weights,
+            "model": weights,
         }
 
         pkl.dump(obj, open(save_path, "wb"))
 
         return save_path
 
-    def _load_from_checkpoint(self, checkpoint_path: Path, **kwargs) -> None:
+    def _load_from_checkpoint(
+        self, checkpoint_path: str | Path | dict, **kwargs
+    ) -> None:
         model_class: Optional[Type] = kwargs.get("model_class", None)
         if model_class is None:
             raise ValueError(
                 "model_class must be provided as a keyword argument to _load_from_checkpoint."
             )
 
-        obj: ADAPTER_PICKLE = pkl.load(open(checkpoint_path, "rb"))
-        obj_class_data = obj["class_data"]
-        obj_class_name = (
-            obj_class_data.__name__  # type: ignore
-            if hasattr(obj_class_data, "__name__")
-            else str(obj_class_data)
-        )
+        if isinstance(checkpoint_path, dict):
+            obj: ADAPTER_CHECKPOINT = checkpoint_path  # type: ignore
+        else:
+            obj: ADAPTER_CHECKPOINT = pkl.load(open(checkpoint_path, "rb"))
+
+        obj_class_name = obj["class_data"]["name"]
+
         if obj_class_name != self.__class__.__name__:
             raise ValueError(
                 f"Pickled adapter class mismatch: expected '{self.__class__.__name__}', got '{obj_class_name}'"
             )
 
         params = obj["params"]
-        params["weights"] = {
-            "original_weights": params["weights"],
-            "saved_weights": obj["saved_weights"],
-        }
+
         logger.warning("Overwriting adapter parameters with loaded pickled parameters.")
+
         self.set_params(params)
 
-        if not isinstance(self.weights, dict):
-            raise ValueError("Weights should be a dict after loading from checkpoint.")
-
-        saved_weights_actual = self.weights["saved_weights"]
         temp_weights_path = Path(f"temp_UltralyticsAdapter_{model_class.__name__}.pt")
 
-        torch.save(saved_weights_actual, temp_weights_path)
+        torch.save(obj["model"], temp_weights_path)
         self.model = model_class(str(temp_weights_path))
         os.remove(temp_weights_path)
 
@@ -317,16 +300,13 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
     # --- MAIN METHODS ---
 
     def setup(self) -> "YoloUltralyticsAdapter":
+        if self.weights == "DEFAULT":
+            self.weights = "yolo11l.pt"
 
-        if isinstance(self.weights, dict):
-            raise ValueError(
-                "Weights should never be a dict at this point of execution."
-            )
-        elif Path(self.weights).is_file():
-            self._load_from_checkpoint(Path(self.weights), model_class=YOLO)
+        if self.checkpoint is not None:
+            self._load_from_checkpoint(self.checkpoint, model_class=YOLO)
+
         else:
-            if self.weights == "DEFAULT":
-                self.weights = "yolo11l.pt"
             self.model = YOLO(str(self.weights))  # type: ignore
 
         self.model.to(self.device)
@@ -341,30 +321,48 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
         max_detections: int = 10,
     ) -> List[ADAPTER_PREDICTION]:
 
+        # NOTE: we are applying NMS/WBF during postprocessing
         results = self.model.predict(  # type: ignore
             source=images,
             imgsz=self.img_size,
             batch=len(images),
             verbose=False,
             # --- Inference-time thresholds ---
-            conf=conf_threshold,
-            iou=iou_threshold,
-            max_det=max_detections,
+            conf=0.0,
+            iou=1.0,
+            max_det=max_detections * 3,
         )
 
         all_detections: List[ADAPTER_PREDICTION] = []
         for result in results:
+
             boxes = result.boxes.xyxy
             scores = result.boxes.conf
             labels = (
                 result.boxes.cls + 1
             )  # Ultralytics class ids are 0-based so we increment by 1
 
-            prediction: ADAPTER_PREDICTION = {
-                "boxes": boxes.cpu(),
-                "scores": scores.cpu(),
-                "labels": labels.cpu().long(),
-            }
+            if self.strategy == "nms":
+                prediction = postprocess_prediction_nms(
+                    boxes=boxes,
+                    scores=scores,
+                    labels=labels,
+                    conf_threshold=conf_threshold,
+                    iou_threshold=iou_threshold,
+                    max_detections=max_detections,
+                )
+            elif self.strategy == "wbf":
+
+                prediction = weighted_boxes_fusion(
+                    boxes=boxes,
+                    scores=scores,
+                    labels=labels,
+                    conf_threshold=conf_threshold,
+                    iou_threshold=iou_threshold,
+                    max_detections=max_detections,
+                )
+            else:
+                raise ValueError(f"Unsupported strategy: {self.strategy}")
 
             all_detections.append(prediction)
 
@@ -377,17 +375,14 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
     # --- MAIN METHODS ---
 
     def setup(self) -> "RtdetrUltralyticsAdapter":
+        if self.weights == "DEFAULT":
+            self.weights = "rtdetr-l.pt"
 
-        if isinstance(self.weights, dict):
-            raise ValueError(
-                "Weights should never be a dict at this point of execution."
-            )
-        elif Path(self.weights).is_file() and Path(self.weights).suffix == ".pkl":
-            self._load_from_checkpoint(Path(self.weights), model_class=RTDETR)
+        if self.checkpoint is not None:
+            self._load_from_checkpoint(self.checkpoint, model_class=RTDETR)
+
         else:
-            if self.weights == "DEFAULT":
-                self.weights = "rtdetr-l.pt"
-            self.model = RTDETR(str(self.weights))  # type: ignore
+            self.model = RTDETR(str(self.weights))
 
         self.model.to(self.device)
 
@@ -402,15 +397,15 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
     ) -> List[ADAPTER_PREDICTION]:
 
         # NOTE: RTDETR does NOT support Non-Maximum Suppression (NMS) at inference time.
-        # Therefore, we apply NMS during postprocessing.
+        # NOTE: we are applying NMS/WBF during postprocessing
         results = self.model.predict(  # type: ignore
             source=images,
             imgsz=self.img_size,
             batch=len(images),
             verbose=False,
             # --- Inference-time thresholds ---
-            conf=conf_threshold,
-            max_det=max_detections,
+            conf=0.0,
+            max_det=max_detections * 3,
         )
 
         all_detections: List[ADAPTER_PREDICTION] = []
@@ -422,14 +417,27 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
                 result.boxes.cls + 1
             )  # Ultralytics class ids are 0-based so we increment by 1
 
-            prediction = postprocess_prediction_nms(
-                boxes=boxes,
-                scores=scores,
-                labels=labels,
-                conf_threshold=conf_threshold,
-                iou_threshold=iou_threshold,
-                max_detections=max_detections,
-            )
+            if self.strategy == "nms":
+                prediction = postprocess_prediction_nms(
+                    boxes=boxes,
+                    scores=scores,
+                    labels=labels,
+                    conf_threshold=conf_threshold,
+                    iou_threshold=iou_threshold,
+                    max_detections=max_detections,
+                )
+            elif self.strategy == "wbf":
+
+                prediction = weighted_boxes_fusion(
+                    boxes=boxes,
+                    scores=scores,
+                    labels=labels,
+                    conf_threshold=conf_threshold,
+                    iou_threshold=iou_threshold,
+                    max_detections=max_detections,
+                )
+            else:
+                raise ValueError(f"Unsupported strategy: {self.strategy}")
 
             all_detections.append(prediction)
 

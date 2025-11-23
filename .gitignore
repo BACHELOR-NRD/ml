@@ -44,3 +44,4 @@ __pycache__/
 **/optuna/hyper/**/*.json
 **/optuna/hyper/**/*.jpg
 **/optuna/hyper/**/*.csv
+**/optuna/ensemble/**/*.json
