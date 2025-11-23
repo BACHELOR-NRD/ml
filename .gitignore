@@ -43,6 +43,7 @@ __pycache__/
 # Optuna optimization files
 **/optuna/hyper/**/*.json
 **/optuna/hyper/**/*.jpg
+**/optuna/hyper/**/*.png
 **/optuna/hyper/**/*.csv
 **/optuna/hyper/**/*.yaml
 **/optuna/ensemble/**/*.json

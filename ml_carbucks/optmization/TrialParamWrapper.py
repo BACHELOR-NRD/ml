@@ -11,7 +11,7 @@ logger = setup_logger(__name__)
 
 @dataclass
 class TrialParamWrapper:
-    version: Literal["v1", "v2"] = "v1"
+    version: Literal["v1", "v2", "v3", "v4"] = "v1"
     ensemble_size: Optional[int] = None
     """A class that is to help the creation of the trial parameters."""
 
@@ -196,9 +196,15 @@ class TrialParamWrapper:
         return params
 
     def _get_ensemble_model_params(self, trial: optuna.Trial) -> Dict[str, Any]:
+        if self.version == "v3":
+            fusion_strategy = ["nms"]
+        elif self.version == "v4":
+            fusion_strategy = ["wbf"]
+        else:
+            raise ValueError(f"Unknown version for ensemble model: {self.version}")
         params = {
             "fusion_strategy": trial.suggest_categorical(
-                "fusion_strategy", ["nms", "wbf", None]
+                "fusion_strategy", fusion_strategy
             ),
             "fusion_conf_threshold": trial.suggest_float(
                 "fusion_conf_threshold", 0.1, 0.5

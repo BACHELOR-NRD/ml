@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Literal
 
 import pickle as pkl
 import optuna
@@ -34,6 +34,7 @@ def create_objective(
     adapters_predictions: List[List[ADAPTER_PREDICTION]],
     ground_truths: List[dict],
     distributions: List[ScoreDistribution],
+    param_wrapper_version: Literal["v3", "v4"],
 ) -> Callable:
     """
     Ensemble optimization objective function creator.
@@ -49,7 +50,7 @@ def create_objective(
         try:
 
             params = TrialParamWrapper(
-                ensemble_size=len(adapters_predictions)
+                ensemble_size=len(adapters_predictions), version=param_wrapper_version
             ).get_param(trial, "ensemblemodel")
 
             fused_predictions = fuse_adapters_predictions(
