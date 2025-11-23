@@ -124,14 +124,14 @@ def create_ensembling_opt_prestep(
         ) = pkl.load(open(saved_prestep_path, "rb"))
     else:
 
-        new_adapters = [adapter.clone().setup() for adapter in adapters]
         for fold_idx in range(len(train_folds)):
-            # fold_train_datasets = train_folds[fold_idx]
+            fold_train_datasets = train_folds[fold_idx]
             fold_val_datasets = val_folds[fold_idx]
 
-            # new_adapters = [
-            #     adapter.clone(clean_saved_weights=True).setup() for adapter in adapters
-            # ]
+            new_adapters = [
+                adapter.clone().setup().clone(clean_saved_weights=True)
+                for adapter in adapters
+            ]
 
             logger.info(f"Processing fold {fold_idx + 1}/{len(train_folds)}")
 
@@ -139,9 +139,9 @@ def create_ensembling_opt_prestep(
                 logger.info(
                     f"Fitting adapter {adapter_idx + 1}/{len(new_adapters)} on fold {fold_idx + 1}/{len(train_folds)}"
                 )
-                # new_adapters[adapter_idx] = new_adapters[adapter_idx].fit(
-                #     datasets=fold_train_datasets
-                # )
+                new_adapters[adapter_idx] = new_adapters[adapter_idx].fit(
+                    datasets=fold_train_datasets
+                )
 
             val_loader = create_clean_loader(
                 datasets=fold_val_datasets,

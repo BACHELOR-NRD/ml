@@ -72,6 +72,11 @@ def create_ensemble(
     A function that creates and fits an EnsembleModel from given adapters and parameters.
     The idea is to create a final ensemble model that would be production ready.
     """
+
+    # NOTE: this is quite stupid but necessary to clone,setup and clone without weights again
+    # 1. first clone disassociates the object from the original one (not strictly necessary here but good practice)
+    # 2. loads all hyperparameters and setups the adapter
+    # 3. finally, clone again but this time clean the saved weights to avoid carrying over any trained weights
     ensemble_adapters = [
         adapter.clone().setup().clone(clean_saved_weights=True) for adapter in adapters
     ]
