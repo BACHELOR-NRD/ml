@@ -20,7 +20,7 @@ class TrialParamWrapper:
     )  # NOTE: smaller sizes for faster experiments
 
     V2_IMG_SIZE_OPTIONS: List[int] = field(
-        default_factory=lambda: [1024]
+        default_factory=lambda: [768]
     )  # NOTE: bigger sizes for better accuracy
 
     def _get_yolo_params(self, trial: optuna.Trial) -> Dict[str, Any]:
@@ -48,8 +48,11 @@ class TrialParamWrapper:
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["yolo11x.pt"]),
-                    "epochs": trial.suggest_int("epochs", 20, 60),
-                    "batch_size": trial.suggest_categorical("batch_size", [8, 16]),
+                    "epochs": trial.suggest_int("epochs", 15, 40),
+                    "batch_size": trial.suggest_categorical("batch_size", [8]),
+                    "accumulation_steps": trial.suggest_categorical(
+                        "accumulation_steps", [2, 4]
+                    ),
                     "img_size": trial.suggest_categorical(
                         "img_size", self.V2_IMG_SIZE_OPTIONS
                     ),
@@ -86,8 +89,11 @@ class TrialParamWrapper:
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["rtdetr-x.pt"]),
-                    "epochs": trial.suggest_int("epochs", 20, 60),
-                    "batch_size": trial.suggest_categorical("batch_size", [8, 16]),
+                    "epochs": trial.suggest_int("epochs", 15, 40),
+                    "batch_size": trial.suggest_categorical("batch_size", [8]),
+                    "accumulation_steps": trial.suggest_categorical(
+                        "accumulation_steps", [2, 4]
+                    ),
                     "img_size": trial.suggest_categorical(
                         "img_size", self.V2_IMG_SIZE_OPTIONS
                     ),
@@ -128,11 +134,14 @@ class TrialParamWrapper:
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["V2"]),
-                    "epochs": trial.suggest_int("epochs", 20, 60),
+                    "epochs": trial.suggest_int("epochs", 15, 40),
                     "img_size": trial.suggest_categorical(
                         "img_size", self.V2_IMG_SIZE_OPTIONS
                     ),
-                    "batch_size": trial.suggest_categorical("batch_size", [8, 16]),
+                    "batch_size": trial.suggest_categorical("batch_size", [8]),
+                    "accumulation_steps": trial.suggest_categorical(
+                        "accumulation_steps", [2]
+                    ),
                     "optimizer": trial.suggest_categorical(
                         "optimizer", ["SGD", "AdamW"]
                     ),
@@ -164,18 +173,20 @@ class TrialParamWrapper:
                     ),
                 }
             )
-
         if self.version == "v2":
             params.update(
                 {
                     "weights": trial.suggest_categorical(
-                        "weights", ["tf_efficientdet_d5"]
+                        "weights", ["tf_efficientdet_d3"]
                     ),
-                    "epochs": trial.suggest_int("epochs", 20, 60),
+                    "epochs": trial.suggest_int("epochs", 15, 40),
                     "img_size": trial.suggest_categorical(
                         "img_size", self.V2_IMG_SIZE_OPTIONS
                     ),
-                    "batch_size": trial.suggest_categorical("batch_size", [8, 16]),
+                    "batch_size": trial.suggest_categorical("batch_size", [4]),
+                    "accumulation_steps": trial.suggest_categorical(
+                        "accumulation_steps", [4, 8]
+                    ),
                     "optimizer": trial.suggest_categorical(
                         "optimizer", ["momentum", "adamw"]
                     ),
@@ -195,7 +206,7 @@ class TrialParamWrapper:
             "fusion_iou_threshold": trial.suggest_float(
                 "fusion_iou_threshold", 0.2, 0.8
             ),
-            "fusion_max_detections": trial.suggest_int("fusion_max_detections", 5, 10),
+            "fusion_max_detections": trial.suggest_int("fusion_max_detections", 5, 5),
             "fusion_norm_method": trial.suggest_categorical(
                 "fusion_norm_method", ["minmax", "zscore", "quantile", None]
             ),

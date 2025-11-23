@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Literal, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 
 import torch
 import numpy as np
@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from torchvision.models.detection.faster_rcnn import (
     FastRCNNPredictor,
     fasterrcnn_resnet50_fpn,
+    fasterrcnn_resnet50_fpn_v2,
     FasterRCNN_ResNet50_FPN_Weights,
     FasterRCNN_ResNet50_FPN_V2_Weights,
 )
@@ -54,6 +55,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     clip_gradients: Optional[float] = None
     momentum: float = 0.9  # Used for SGD and RMSprop
     strategy: Literal["nms", "wbf"] = "nms"
+    accumulation_steps: int = 1
 
     # --- SETUP PARAMETERS ---
 
@@ -70,13 +72,9 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             self._load_from_checkpoint(self.checkpoint)  # type: ignore
 
         elif self.weights in ("V1", "V2"):
-            if self.weights == "V1":
-                weights_enum = FasterRCNN_ResNet50_FPN_Weights.DEFAULT
-            else:
-                weights_enum = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
 
             self._create_model_wrapper(
-                weights_enum=weights_enum,
+                weights=str(self.weights),
                 img_size=self.img_size,
                 n_classes=self.n_classes,
             )
@@ -112,27 +110,32 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         loader: DataLoader,
     ) -> float:
         self.model.train()
-
         total_loss = 0.0
+
+        optimizer.zero_grad()
+        cnt = 0
         for imgs, targets in tqdm(
             loader, desc="Training", unit="batch", disable=not self.verbose
         ):
             imgs = list(img.to(self.device) for img in imgs)
             targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
-
             loss_dict = self.model(imgs, targets)
             loss = sum(loss for loss in loss_dict.values())
-
-            optimizer.zero_grad()
-            loss.backward()  # type: ignore
-
-            # NOTE: Clipping gradients to avoid exploding gradients
-            if self.clip_gradients is not None:
-                clip_grad_norm_(self.model.parameters(), max_norm=self.clip_gradients)
-
-            optimizer.step()
-
             total_loss += loss.item()  # type: ignore
+
+            (loss / self.accumulation_steps).backward()  # type: ignore
+
+            if (cnt + 1) % self.accumulation_steps == 0:
+                self._clip_gradients_wrapper()
+                optimizer.step()
+                optimizer.zero_grad()
+
+            cnt += 1
+
+        if (cnt) % self.accumulation_steps != 0:
+            self._clip_gradients_wrapper()
+            optimizer.step()
+            optimizer.zero_grad()
 
         return total_loss
 
@@ -326,21 +329,36 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         self.set_params(params)
 
         self._create_model_wrapper(
-            weights_enum=None,
+            weights=str(self.weights),
             img_size=self.img_size,
             n_classes=self.n_classes,
         )
 
         self.model.load_state_dict(obj["model"])
 
+    def _clip_gradients_wrapper(self) -> None:
+        if self.clip_gradients is not None:
+            clip_grad_norm_(self.model.parameters(), max_norm=self.clip_gradients)
+
     def _create_model_wrapper(
-        self, weights_enum: Any, img_size: int, n_classes: int
+        self, weights: str, img_size: int, n_classes: int
     ) -> None:
-        self.model = fasterrcnn_resnet50_fpn(
-            weights=weights_enum,
-            min_size=img_size,
-            max_size=img_size,
-        )
+
+        if weights == "V1":
+            weights_enum = FasterRCNN_ResNet50_FPN_Weights.DEFAULT
+            self.model = fasterrcnn_resnet50_fpn(
+                weights=weights_enum,
+                min_size=img_size,
+                max_size=img_size,
+            )
+
+        elif weights == "V2":
+            weights_enum = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
+            self.model = fasterrcnn_resnet50_fpn_v2(
+                weights=weights_enum,
+                min_size=img_size,
+                max_size=img_size,
+            )
 
         in_features = self.model.roi_heads.box_predictor.cls_score.in_features  # type: ignore
         self.model.roi_heads.box_predictor = FastRCNNPredictor(

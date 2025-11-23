@@ -102,25 +102,26 @@ def main(
 if __name__ == "__main__":
 
     # NOTE: semantic names for each "run"
-    runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    runtime_suffix = "big_resolution_carbucks"
+    runtime_prefix = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    runtime_suffix = "heavy_models"
+    runtime = f"{runtime_prefix}_{runtime_suffix}"
 
     # NOTE: defult params are setup here
     main(
         adapter_list=[
-            EfficientDetAdapter(weights="tf_efficientdet_d5"),
-            FasterRcnnAdapter(weights="V2"),
-            YoloUltralyticsAdapter(weights="yolo11x.pt"),
-            RtdetrUltralyticsAdapter(weights="rtdetr-x.pt"),
+            YoloUltralyticsAdapter(verbose=True),
+            EfficientDetAdapter(verbose=True),
+            RtdetrUltralyticsAdapter(verbose=True),
+            FasterRcnnAdapter(verbose=True),
         ],
-        runtime=runtime + "_" + runtime_suffix,
+        runtime=runtime,
         train_datasets=DatasetsPathManager.CARBUCKS_TRAIN_STANDARD,
         val_datasets=DatasetsPathManager.CARBUCKS_VAL_STANDARD,
         param_wrapper_version="v2",  # NOTE: v2 will use bigger image sizes and epochs so it takes longer
         plot_with_debug=True,
         results_dir=OPTUNA_DIR,
-        n_trials=1,
+        n_trials=20,
         patience=15,
         min_percentage_improvement=0.01,
-        optimization_timeout=4 * 3600,  # N hours
+        optimization_timeout=12 * 3600,  # N hours
     )

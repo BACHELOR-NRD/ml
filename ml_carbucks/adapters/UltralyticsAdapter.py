@@ -40,6 +40,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     lr: float = 1e-3
     momentum: float = 0.9
     weight_decay: float = 5e-4
+    accumulation_steps: int = 1
 
     # --- SETUP PARAMETERS ---
 
@@ -112,6 +113,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             momentum=self.momentum,
             weight_decay=self.weight_decay,
             optimizer=self.optimizer,
+            accumulate=self.accumulation_steps,
             **extra_params,
         )
 

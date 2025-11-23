@@ -35,19 +35,13 @@ def create_objective(
             trial_adapter.setup()
 
             if plot_with_debug:
-                try:
-                    metrics = trial_adapter.debug(
-                        train_datasets=train_datasets,
-                        val_datasets=val_datasets,
-                        results_path=results_dir,
-                        results_name=f"debug_{adapter.__class__.__name__}_trial_{trial.number}",
-                    )
-                except NotImplementedError:
-                    logger.info(
-                        f"Debug not implemented for {adapter.__class__.__name__}, proceeding with normal fit/evaluate."
-                    )
-                    trial_adapter.fit(datasets=train_datasets)
-                    metrics = trial_adapter.evaluate(datasets=val_datasets)
+
+                metrics = trial_adapter.debug(
+                    train_datasets=train_datasets,
+                    val_datasets=val_datasets,
+                    results_path=results_dir / "debug",
+                    results_name=f"debug_{adapter.__class__.__name__}_trial_{trial.number}",
+                )
             else:
                 trial_adapter.fit(datasets=train_datasets)
                 metrics = trial_adapter.evaluate(datasets=val_datasets)
