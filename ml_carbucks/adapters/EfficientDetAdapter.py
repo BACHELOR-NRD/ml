@@ -42,13 +42,15 @@ from ml_carbucks.utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
+EFFICIENTDET_OPTIMIZER_OPTIONS = Literal["momentum", "adamw"]
+
 
 @dataclass
 class EfficientDetAdapter(BaseDetectionAdapter):
 
     # --- HYPER PARAMETERS ---
 
-    optimizer: str = "momentum"
+    optimizer: EFFICIENTDET_OPTIMIZER_OPTIONS = "momentum"
     lr: float = 8e-3
     weight_decay: float = 9e-6
     loader: Literal["inbuilt", "custom"] = "inbuilt"

@@ -160,7 +160,7 @@ class TrialParamWrapper:
                     ),
                     "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
                     "optimizer": trial.suggest_categorical(
-                        "optimizer", ["momentum", "adam"]
+                        "optimizer", ["momentum", "adamw"]
                     ),
                 }
             )
@@ -177,7 +177,7 @@ class TrialParamWrapper:
                     ),
                     "batch_size": trial.suggest_categorical("batch_size", [8, 16]),
                     "optimizer": trial.suggest_categorical(
-                        "optimizer", ["momentum", "adam"]
+                        "optimizer", ["momentum", "adamw"]
                     ),
                 }
             )
