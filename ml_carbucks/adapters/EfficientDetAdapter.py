@@ -56,6 +56,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     weight_decay: float = 9e-6
     loader: Literal["inbuilt", "custom"] = "inbuilt"
     strategy: Literal["nms", "wbf"] = "nms"
+    accumulation_steps: int = 1
 
     # --- SETUP PARAMETERS ---
 
@@ -117,19 +118,29 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         self, optimizer: torch.optim.Optimizer, loader: DataLoader
     ) -> float:
         self.model.train()
-
         total_loss = 0.0
+
+        optimizer.zero_grad()
+        cnt = 0
         for imgs, targets in tqdm(
             loader, desc="Training", unit="batch", disable=not self.verbose
         ):
             cimgs, ctargets = self._convert_batch(imgs, targets)
-
             output = self.model(cimgs, ctargets)
             loss = output["loss"]
             total_loss += loss.item()
-            optimizer.zero_grad()
-            loss.backward()
+
+            (loss / self.accumulation_steps).backward()
+
+            if (cnt + 1) % self.accumulation_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+
+            cnt += 1
+
+        if (cnt) % self.accumulation_steps != 0:
             optimizer.step()
+            optimizer.zero_grad()
 
         return total_loss
 
@@ -418,7 +429,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     def _create_loader(
         self, datasets: List[Tuple[str | Path, str | Path]], is_training: bool
     ):
-        if self.loader == "inbuild":
+        if self.loader == "inbuilt":
             loader = self._create_inbuild_loader(datasets, is_training)
         elif self.loader == "custom":
             loader = self._create_custom_loader(datasets, is_training)
@@ -502,7 +513,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     def _preprocess_images(
         self, images: List[np.ndarray]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        if self.loader == "inbuild":
+        if self.loader == "inbuilt":
             return self._preprocess_images_inbuild_loader(images)
         elif self.loader == "custom":
             preprocessed_images, scales, original_sizes = preprocess_images(
@@ -573,7 +584,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     def _convert_batch(
         self, imgs: List[torch.Tensor], targets: Dict | List[Dict]
     ) -> Tuple[torch.Tensor, dict]:
-        if self.loader == "inbuild":
+        if self.loader == "inbuilt":
             # NOTE: In-build loader already provides correct format
             return imgs, targets  # type: ignore
         elif self.loader == "custom":
