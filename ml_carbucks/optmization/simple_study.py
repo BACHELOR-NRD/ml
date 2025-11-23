@@ -52,7 +52,7 @@ def execute_simple_study(
         {
             "hyper_name": hyper_name,
             "study_name": study_name,
-            "n_trials": n_trials,
+            "trials_planned": n_trials,
             "patience": patience,
             "min_percentage_improvement": min_percentage_improvement,
             "optimization_timeout": optimization_timeout,
@@ -123,13 +123,13 @@ def execute_simple_study(
         best_trial = study.best_trial
 
     hyper_results = {
+        **metadata,
         "best_params": best_trial.params,
         "best_value": best_trial.value if is_single_objective else best_trial.values[0],
         "best_trial_number": best_trial.number,
         "study_name": study_name,
-        "n_trials": len(completed_trials),
+        "trials_completed": len(completed_trials),
         "total_study_time_seconds": study_time_sum,
-        **metadata,
     }
 
     (hyper_dir_path / hyper_name).mkdir(parents=True, exist_ok=True)

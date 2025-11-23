@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, List
 import pickle as pkl
 import optuna
 from optuna import Trial
+from tqdm import tqdm
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
@@ -32,6 +33,7 @@ def create_objective(
     adapters_predictions: List[List[ADAPTER_PREDICTION]],
     ground_truths: List[dict],
     distributions: List[ScoreDistribution],
+    adapters_fold_scores: List[List[float]],
 ) -> Callable:
     """
     Ensemble optimization objective function creator.
@@ -69,6 +71,7 @@ def create_objective(
             metric.update(processed_predictions, ground_truths)  # type: ignore
             processed = postprocess_evaluation_results(metric.compute())
 
+            trial.set_user_attr("adapters_fold_scores", adapters_fold_scores)
             score = processed["map_50"]
 
             return score
@@ -120,20 +123,25 @@ def create_ensembling_opt_prestep(
             adapters_crossval_metrics,
         ) = pkl.load(open(saved_prestep_path, "rb"))
     else:
+
+        new_adapters = [adapter.clone().setup() for adapter in adapters]
         for fold_idx in range(len(train_folds)):
-            fold_train_datasets = train_folds[fold_idx]
+            # fold_train_datasets = train_folds[fold_idx]
             fold_val_datasets = val_folds[fold_idx]
 
-            new_adapters = [adapter.clone().setup() for adapter in adapters]
+            # new_adapters = [
+            #     adapter.clone(clean_saved_weights=True).setup() for adapter in adapters
+            # ]
+
             logger.info(f"Processing fold {fold_idx + 1}/{len(train_folds)}")
 
             for adapter_idx in range(len(new_adapters)):
                 logger.info(
                     f"Fitting adapter {adapter_idx + 1}/{len(new_adapters)} on fold {fold_idx + 1}/{len(train_folds)}"
                 )
-                new_adapters[adapter_idx] = new_adapters[adapter_idx].fit(
-                    datasets=fold_train_datasets
-                )
+                # new_adapters[adapter_idx] = new_adapters[adapter_idx].fit(
+                #     datasets=fold_train_datasets
+                # )
 
             val_loader = create_clean_loader(
                 datasets=fold_val_datasets,
@@ -144,11 +152,24 @@ def create_ensembling_opt_prestep(
 
             evaluators_list = [MeanAveragePrecision() for _ in range(len(new_adapters))]
 
-            for batch in val_loader:
-                images, targets = batch
+            for images, targets in tqdm(val_loader):
+
+                eval_gts = [
+                    {
+                        "boxes": target["boxes"].detach().cpu(),
+                        "labels": target["labels"].detach().cpu().long(),
+                    }
+                    for target in targets
+                ]
+                ground_truths.extend(eval_gts)
 
                 for adapter_idx, adapter in enumerate(new_adapters):
-                    preds = adapter.predict(images)
+                    preds = adapter.predict(
+                        images,
+                        conf_threshold=0.05,
+                        max_detections=5,
+                        iou_threshold=0.7,
+                    )
 
                     eval_preds = [
                         {
@@ -158,16 +179,8 @@ def create_ensembling_opt_prestep(
                         }
                         for pred in preds
                     ]
-                    eval_gts = [
-                        {
-                            "boxes": target["boxes"].detach().cpu(),
-                            "labels": target["labels"].detach().cpu().long(),
-                        }
-                        for target in targets
-                    ]
 
                     adapters_predictions[adapter_idx].extend(eval_preds)  # type: ignore
-                    ground_truths.extend(eval_gts)
 
                     evaluators_list[adapter_idx].update(eval_preds, eval_gts)
 

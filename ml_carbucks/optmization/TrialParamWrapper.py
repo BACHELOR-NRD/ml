@@ -187,17 +187,17 @@ class TrialParamWrapper:
     def _get_ensemble_model_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         params = {
             "fusion_strategy": trial.suggest_categorical(
-                "fusion_strategy", ["nms", "wbf"]
+                "fusion_strategy", ["nms", "wbf", None]
             ),
             "fusion_conf_threshold": trial.suggest_float(
-                "fusion_conf_threshold", 0.01, 0.5
+                "fusion_conf_threshold", 0.1, 0.5
             ),
             "fusion_iou_threshold": trial.suggest_float(
                 "fusion_iou_threshold", 0.2, 0.8
             ),
             "fusion_max_detections": trial.suggest_int("fusion_max_detections", 5, 10),
             "fusion_norm_method": trial.suggest_categorical(
-                "fusion_norm_method", ["minmax", "zscore", None]
+                "fusion_norm_method", ["minmax", "zscore", "quantile", None]
             ),
         }
 
@@ -207,11 +207,15 @@ class TrialParamWrapper:
             )
             params["fusion_trust_weights"] = None
         else:
-            trust_weights = []
-            for i in range(self.ensemble_size):
-                weight = trial.suggest_float(f"trust_weight_{i}", 0.0, 1.0)
-                trust_weights.append(weight)
-            params["fusion_trust_weights"] = trust_weights
+            use_weights = trial.suggest_categorical("use_trust_weights", [True, False])
+            if use_weights is True:
+                trust_weights = []
+                for i in range(self.ensemble_size):
+                    weight = trial.suggest_float(f"trust_weight_{i}", 0.5, 1.0)
+                    trust_weights.append(weight)
+                params["fusion_trust_weights"] = trust_weights
+            else:
+                params["fusion_trust_weights"] = None
 
         return params
 
