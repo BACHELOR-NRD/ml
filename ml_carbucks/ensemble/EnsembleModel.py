@@ -18,10 +18,7 @@ from ml_carbucks.utils.ensembling import (
     fuse_adapters_predictions,
 )
 from ml_carbucks.utils.logger import setup_logger
-from ml_carbucks.utils.postprocessing import (
-    convert_pred2eval,
-    postprocess_evaluation_results,
-)
+from ml_carbucks.utils.postprocessing import postprocess_evaluation_results
 from ml_carbucks.utils.preprocessing import create_clean_loader
 
 logger = setup_logger(__name__)
@@ -45,7 +42,7 @@ class EnsembleModel(BaseDetectionAdapter):
     fusion_conf_threshold: float = 0.2
     fusion_iou_threshold: float = 0.5
     fusion_max_detections: int = 10
-    fusion_norm_method: Optional[Literal["minmax", "zscore"]] = "minmax"
+    fusion_norm_method: Optional[Literal["minmax", "zscore", "quantile"]] = None
     fusion_trust_weights: Optional[list[float]] = None
 
     # --- MAIN METHODS ---
@@ -135,10 +132,8 @@ class EnsembleModel(BaseDetectionAdapter):
             score_normalization_method=self.fusion_norm_method,
             distributions=self.distributions,
         )
-        processed_predictions: List[ADAPTER_PREDICTION] = []
-        for pred in fused_predictions:
-            processed_predictions.append(convert_pred2eval(pred))
-        return processed_predictions
+
+        return fused_predictions
 
     def debug(
         self,

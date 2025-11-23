@@ -7,6 +7,7 @@ import numpy as np
 
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.postprocessing import (
+    convert_pred2eval,
     postprocess_prediction_nms,
     weighted_boxes_fusion,
 )
@@ -23,6 +24,7 @@ class ScoreDistribution(TypedDict):
     maximum: float
     mean: float
     std: float
+    quantiles: List[float]
 
 
 def calculate_score_distribution(
@@ -41,6 +43,7 @@ def calculate_score_distribution(
         "maximum": np.nan,
         "mean": np.nan,
         "std": np.nan,
+        "quantiles": [],
     }
     all_scores: List[float] = []
     for p in adapter_predictions:
@@ -55,20 +58,23 @@ def calculate_score_distribution(
     distribution["maximum"] = all_scores_tensor.max().item()
     distribution["mean"] = all_scores_tensor.mean().item()
     distribution["std"] = all_scores_tensor.std().item()
+    distribution["quantiles"] = all_scores_tensor.quantile(
+        torch.linspace(0, 1, steps=101)
+    ).tolist()
 
     return distribution
 
 
 def normalize_scores(
     preds_list: list[list[torch.Tensor]],
-    method: Literal["minmax", "zscore"] = "minmax",
+    method: Literal["minmax", "zscore", "quantile"] = "minmax",
     distributions: Optional[List[ScoreDistribution]] = None,
 ) -> list[list[torch.Tensor]]:
     """
     Normalize confidence scores of predictions from multiple adapters.
     Args:
         preds_list (list): List of predictions from different adapters. Each prediction is a list of tensors per image.
-        method (str): Normalization method, either "minmax" or "zscore".
+        method (str): Normalization method, either "minmax", "zscore", or "quantile".
         trust (list, optional): Trust weights for each adapter. If None, equal weights are used.
     Returns:
         list: Normalized predictions with adjusted confidence scores.
@@ -92,11 +98,17 @@ def normalize_scores(
         if distributions is None:
             s_min, s_max = flat_scores.min(), flat_scores.max()
             mean, std = flat_scores.mean(), flat_scores.std() + 1e-6
+            quantiles = torch.quantile(flat_scores, torch.linspace(0, 1, steps=101))
         else:
             s_min = torch.tensor(distributions[adapter_idx]["minimum"])
             s_max = torch.tensor(distributions[adapter_idx]["maximum"])
             mean = torch.tensor(distributions[adapter_idx]["mean"])
             std = torch.tensor(distributions[adapter_idx]["std"]) + 1e-6
+            quantiles = torch.linspace(
+                distributions[adapter_idx]["minimum"],
+                distributions[adapter_idx]["maximum"],
+                steps=101,
+            )
 
         normalized = deepcopy(preds)
 
@@ -110,6 +122,14 @@ def normalize_scores(
                 z = (p[:, 4] - mean) / std
                 cdf = 0.5 * (1 + torch.erf(z / math.sqrt(2)))
                 p[:, 4] = cdf
+            elif method == "quantile":
+                # For each score, find its quantile position
+                quantized_scores = []
+                for score in p[:, 4]:
+                    idx = torch.searchsorted(quantiles, score)
+                    quantile_value = idx.item() / (len(quantiles) - 1)
+                    quantized_scores.append(quantile_value)
+                p[:, 4] = torch.tensor(quantized_scores)
             else:
                 raise ValueError(f"Unknown normalization method: {method}")
 
@@ -147,7 +167,9 @@ def fuse_adapters_predictions(
     conf_threshold: float,
     strategy: Optional[Literal["nms", "wbf"]] = None,
     trust_weights: Optional[list[float]] = None,
-    score_normalization_method: Optional[Literal["minmax", "zscore"]] = None,
+    score_normalization_method: Optional[
+        Literal["minmax", "zscore", "quantile"]
+    ] = None,
     distributions: Optional[List[ScoreDistribution]] = None,
 ) -> list[ADAPTER_PREDICTION]:
     """
@@ -256,7 +278,8 @@ def fuse_adapters_predictions(
                     max_detections=max_detections,
                 )
             strategy_predictions.append(wbf_combined)
-    else:
+    elif strategy is None:
+        logger.info("No fusion strategy applied; predictions stacked.")
         strategy_list_of_tensors = [
             combined_preds[combined_preds[:, 4] >= conf_threshold]
             .clone()
@@ -279,5 +302,5 @@ def fuse_adapters_predictions(
 
             strategy_predictions.append(prediction)
 
-        logger.warning(f"Unknown fusion strategy: {strategy}, skipping fusion.")
-    return strategy_predictions
+    processed_predictions = [convert_pred2eval(pred) for pred in strategy_predictions]
+    return processed_predictions

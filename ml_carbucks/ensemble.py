@@ -72,16 +72,16 @@ def create_ensemble(
     A function that creates and fits an EnsembleModel from given adapters and parameters.
     The idea is to create a final ensemble model that would be production ready.
     """
-    ensemble_adapters = [adapter.clone() for adapter in adapters]
+    ensemble_adapters = [
+        adapter.clone().setup().clone(clean_saved_weights=True) for adapter in adapters
+    ]
     if final_datasets is None:
         logger.warning(
             "Full datasets for ensemble training not provided. EnsembleModel will be created without fitting."
         )
     else:
         for i in range(len(ensemble_adapters)):
-            ensemble_adapters[i] = (
-                ensemble_adapters[i].clone().setup().fit(datasets=final_datasets)
-            )
+            ensemble_adapters[i].setup().fit(final_datasets)
 
     ensemble = EnsembleModel(
         **params,
@@ -126,6 +126,7 @@ def main(
             adapters_predictions=adapters_predictions,
             ground_truths=ground_truths,
             distributions=distributions,
+            adapters_fold_scores=metadata["adapters_avg_fold_map_50"],
         ),
         patience=patience,
         min_percentage_improvement=min_percentage_improvement,
@@ -167,19 +168,38 @@ def main(
 if __name__ == "__main__":
 
     # NOTE: you can define your own adapters there instead of loading from hyperopt
-    # adapters = [<your own list of adapters>]
-    adapters = load_adapters_from_hyperopt(
-        "20251121_000000_standard_carbucks", load_pattern="best_pickled_Y*_model.pkl"
-    )
+    adapters = [
+        YoloUltralyticsAdapter(
+            weights="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/YoloUltralyticsAdapter_model.pkl"
+        ),
+        RtdetrUltralyticsAdapter(
+            weights="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/RtdetrUltralyticsAdapter_model.pkl"
+        ),
+        FasterRcnnAdapter(
+            weights="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/FasterRcnnAdapter_model.pkl"
+        ),
+        EfficientDetAdapter(
+            weights="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/EfficientDetAdapter_model.pkl"
+        ),
+    ]
+    # adapters = load_adapters_from_hyperopt(
+    #     "20251121_000000_standard_carbucks", load_pattern="best_pickled_Y*_model.pkl"
+    # )
     runtime = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     runtime_suffix = "ensemble_initial"
 
+    # NOTE: this is to override and should be rremoved in production
+    override_runtime = "20251123_155224_ensemble_initial"
     main(
         adapters=adapters,
-        runtime=runtime + "_" + runtime_suffix,
+        runtime=(
+            runtime + "_" + runtime_suffix
+            if override_runtime is None
+            else override_runtime
+        ),
         results_dir=OPTUNA_DIR,
-        n_trials=300,
-        patience=50,
+        n_trials=400,
+        patience=75,
         min_percentage_improvement=0.01,
         train_folds=DatasetsPathManager.CARBUCKS_TRAIN_CV,
         val_folds=DatasetsPathManager.CARBUCKS_VAL_CV,
