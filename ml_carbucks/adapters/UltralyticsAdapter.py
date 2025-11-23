@@ -251,7 +251,12 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             else self.weights
         )
 
-        if not isinstance(self.weights, dict) and Path(self.weights).is_file():
+        # NOTE: original weights cannot be a path to the adapter checkpoint when saving pickled adapter
+        if (
+            not isinstance(original_weights, dict)
+            and Path(original_weights).is_file()
+            and Path(original_weights).suffix == ".pkl"
+        ):
             raise ValueError(
                 "Weights cannot be a path to checkpoint when saving pickled adapter."
             )
@@ -377,11 +382,11 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
             raise ValueError(
                 "Weights should never be a dict at this point of execution."
             )
-        elif Path(self.weights).is_file():
+        elif Path(self.weights).is_file() and Path(self.weights).suffix == ".pkl":
             self._load_from_checkpoint(Path(self.weights), model_class=RTDETR)
         else:
             if self.weights == "DEFAULT":
-                self.weights = "rtdetr_resnet50_vd_fpn_1x_coco.pt"
+                self.weights = "rtdetr-l.pt"
             self.model = RTDETR(str(self.weights))  # type: ignore
 
         self.model.to(self.device)
