@@ -23,6 +23,7 @@ def stratified_cross_valitation(
     dataset_dir: Path = dataset_base,
     cv_folds: int = 5,
     setup_ensemble: callable = None,
+    ensemble_args: dict = None,
 ):
 
     logger = setup_logger(__name__)
@@ -51,7 +52,7 @@ def stratified_cross_valitation(
         logger.info(f"validation dataset: {val_dataset}")
 
         adapter_class = get_adapter_class(hyper_results["adapter"])
-        result = model_training(adapter_class, best_params, train_dataset, val_dataset,callable())
+        result = model_training(adapter_class, best_params, train_dataset, val_dataset, setup_ensemble, ensemble_args)
         fold_results.append(result)
 
     logger.info("Cross-validation complete. Compiling summary statistics.")
