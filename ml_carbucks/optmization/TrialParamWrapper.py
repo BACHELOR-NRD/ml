@@ -196,39 +196,44 @@ class TrialParamWrapper:
         return params
 
     def _get_ensemble_model_params(self, trial: optuna.Trial) -> Dict[str, Any]:
-        if self.version == "v3":
-            fusion_strategy = ["nms"]
-        elif self.version == "v4":
-            fusion_strategy = ["wbf"]
+        # fmt: off
+        if self.version not in ["v3", "v4"]:
+            raise ValueError(
+                f"Ensemble model parameters are only available for versions 'v3' and 'v4', got '{self.version}'"
+            )
+
+        elif self.version == "v3":
+            params = {
+                "fusion_strategy": trial.suggest_categorical("fusion_strategy", ["nms"]),
+                "fusion_conf_threshold": trial.suggest_float("fusion_conf_threshold", 0.00, 0.25),
+                "fusion_iou_threshold": trial.suggest_float("fusion_iou_threshold", 0.35, 0.75),
+                "fusion_max_detections": trial.suggest_int("fusion_max_detections", 5, 5),
+                "fusion_norm_method": trial.suggest_categorical("fusion_norm_method", ["zscore", None]),
+            }
+
         else:
-            raise ValueError(f"Unknown version for ensemble model: {self.version}")
-        params = {
-            "fusion_strategy": trial.suggest_categorical(
-                "fusion_strategy", fusion_strategy
-            ),
-            "fusion_conf_threshold": trial.suggest_float(
-                "fusion_conf_threshold", 0.1, 0.5
-            ),
-            "fusion_iou_threshold": trial.suggest_float(
-                "fusion_iou_threshold", 0.2, 0.8
-            ),
-            "fusion_max_detections": trial.suggest_int("fusion_max_detections", 5, 5),
-            "fusion_norm_method": trial.suggest_categorical(
-                "fusion_norm_method", ["minmax", "zscore", "quantile", None]
-            ),
-        }
+            params = {
+                "fusion_strategy": trial.suggest_categorical("fusion_strategy", ["wbf"]),
+                "fusion_conf_threshold": trial.suggest_float("fusion_conf_threshold", 0.00, 0.20),
+                "fusion_iou_threshold": trial.suggest_float("fusion_iou_threshold", 0.45, 0.85),
+                "fusion_max_detections": trial.suggest_int("fusion_max_detections", 5, 5),
+                "fusion_norm_method": trial.suggest_categorical("fusion_norm_method", ["zscore", None]),
+            }
 
         if self.ensemble_size is None:
-            logger.warning(
-                "Ensemble size not provided in kwargs; cannot suggest trust weights."
-            )
-            params["fusion_trust_weights"] = None
+            logger.warning("Ensemble size not provided in kwargs; cannot suggest trust weights.")
+            params["fusion_trust_factors"] = trial.suggest_categorical("fusion_trust_factors", [None])
+            params["fusion_exponent_factors"] = trial.suggest_categorical("fusion_exponent_factors", [None])
         else:
-            trust_weights = []
-            for i in range(self.ensemble_size):
-                weight = trial.suggest_float(f"trust_weight_{i}", 0.75, 1.0)
-                trust_weights.append(weight)
-            params["fusion_trust_weights"] = trust_weights
+            trust_factors = [trial.suggest_float(f"trust_factor_{i}", 0.25, 3.0) for i in range(self.ensemble_size)]
+            params["fusion_trust_factors"] = trust_factors
+
+            if self.version == "v4":
+                exponent_factors = [trial.suggest_float(f"exponent_factor_{i}", 0.5, 4.0) for i in range(self.ensemble_size)]
+                params["fusion_exponent_factors"] = exponent_factors
+            else:
+                params["fusion_exponent_factors"] = trial.suggest_categorical("fusion_exponent_factors", [None])
+        # fmt: on
 
         return params
 

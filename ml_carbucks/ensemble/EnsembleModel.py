@@ -52,7 +52,8 @@ class EnsembleModel(BaseDetectionAdapter):
     fusion_iou_threshold: float = 0.5
     fusion_max_detections: int = 10
     fusion_norm_method: Optional[Literal["minmax", "zscore", "quantile"]] = None
-    fusion_trust_weights: Optional[list[float]] = None
+    fusion_trust_factors: Optional[list[float]] = None
+    fusion_exponent_factors: Optional[list[float]] = None
 
     # --- MAIN METHODS ---
 
@@ -137,7 +138,8 @@ class EnsembleModel(BaseDetectionAdapter):
             iou_threshold=self.fusion_iou_threshold,
             conf_threshold=self.fusion_conf_threshold,
             strategy=self.fusion_strategy,
-            trust_weights=self.fusion_trust_weights,
+            trust_factors=self.fusion_trust_factors,
+            exponent_factors=self.fusion_exponent_factors,
             score_normalization_method=self.fusion_norm_method,
             distributions=self.distributions,
         )

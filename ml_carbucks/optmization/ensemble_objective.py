@@ -59,7 +59,8 @@ def create_objective(
                 iou_threshold=params["fusion_iou_threshold"],
                 conf_threshold=params["fusion_conf_threshold"],
                 strategy=params["fusion_strategy"],
-                trust_weights=params["fusion_trust_weights"],
+                trust_factors=params["fusion_trust_factors"],
+                exponent_factors=params["fusion_exponent_factors"],
                 score_normalization_method=params["fusion_norm_method"],
                 distributions=distributions,
             )
