@@ -96,7 +96,6 @@ def model_training(
          return setup_ensemble(train_dataset,val_dataset,best_params,ensemble_args)
     else:
         model: BaseDetectionAdapter = adapter_class(**best_params)
-        model.setup()
         model.fit(train_dataset)
         metrics = model.evaluate(val_dataset)
         return metrics

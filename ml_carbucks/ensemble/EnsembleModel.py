@@ -57,14 +57,16 @@ class EnsembleModel(BaseDetectionAdapter):
 
     # --- MAIN METHODS ---
 
-    def setup(self) -> "EnsembleModel":
+    def _setup(self) -> "EnsembleModel":
 
         if self.checkpoint is not None:
             self._load_from_checkpoint(self.checkpoint)
 
-        else:
+        elif len(self.adapters) > 0:
             for adapter in self.adapters:
-                adapter.setup()
+                adapter._setup()
+        else:
+            raise ValueError("EnsembleModel requires at least one adapter to setup.")
 
         return self
 
@@ -215,14 +217,12 @@ class EnsembleModel(BaseDetectionAdapter):
                 )
             adapter_class = adaptername_to_class[adapter_class_name]
             adapter = adapter_class(checkpoint=adapter_dict)
-            adapter = adapter.setup()
             self.adapters.append(adapter)
 
         self.set_params(params)
 
-    @override
-    def clone(self, clean: bool = False) -> "EnsembleModel":
-        cloned_adapters = [adapter.clone(clean=clean) for adapter in self.adapters]
+    def clone(self) -> "EnsembleModel":
+        cloned_adapters = [adapter.clone() for adapter in self.adapters]
         cloned_params = self.get_params(skip=["adapters"])
         cloned_ensemble = EnsembleModel(
             adapters=cloned_adapters,

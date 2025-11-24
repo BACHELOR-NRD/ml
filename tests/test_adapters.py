@@ -66,7 +66,6 @@ def test_adapter_can_overfit(
     adapter = adapter_class(classes=classes)  # type: ignore
 
     adapter.set_params(params)
-    adapter.setup()
 
     adapter.fit(train_datasets)
     eval_results = adapter.evaluate(val_datasets)

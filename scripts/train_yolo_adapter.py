@@ -88,7 +88,7 @@ def main() -> None:
         train_dataset[0],
     )
 
-    adapter.setup().fit([train_dataset])
+    adapter.fit([train_dataset])
     logger.info("Training finished, running evaluation...")
 
     metrics: ADAPTER_METRICS = adapter.evaluate([val_dataset])

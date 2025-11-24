@@ -73,11 +73,12 @@ class BaseDetectionAdapter(ABC):
 
     def __post_init__(self):
         self.device = "cuda" if self._cuda_available() else "cpu"
+        self._setup()
 
     # --- MAIN METHODS ---
 
     @abstractmethod
-    def setup(self) -> "BaseDetectionAdapter":
+    def _setup(self) -> "BaseDetectionAdapter":
         pass
 
     @abstractmethod
@@ -147,6 +148,8 @@ class BaseDetectionAdapter(ABC):
             return False
 
     def set_params(self, params: Dict[str, Any]) -> "BaseDetectionAdapter":
+        old_weights = self.weights
+
         for key, value in params.items():
             if hasattr(self, key):
                 setattr(self, key, value)
@@ -154,6 +157,16 @@ class BaseDetectionAdapter(ABC):
                 raise ValueError(
                     f"Parameter {key} not found in {self.__class__.__name__}"
                 )
+
+        if "weights" in params and params["weights"] != old_weights:
+            logger.warning(
+                "Weights parameter changed. Re-running setup to load new weights model."
+            )
+            logger.warning(
+                "If you did not intend to change weights, please inspect !!!"
+            )
+            self._setup()
+
         return self
 
     def get_params(self, skip: Optional[List[str]] = None) -> Dict[str, Any]:
@@ -165,12 +178,16 @@ class BaseDetectionAdapter(ABC):
             key: value for key, value in self.__dict__.items() if key not in skip_keys
         }
 
-    def clone(self, clean: bool = False) -> "BaseDetectionAdapter":
+    def clone(self) -> "BaseDetectionAdapter":
         """Create a new adapter instance with the same parameters."""
         cls = self.__class__
+        logger.warning(
+            "Cloning adapter does not copy the trained weights. Only hyperparameters are copied."
+        )
         params = self.get_params()
 
-        if clean:
-            params["checkpoint"] = None
+        # NOTE: Do not copy checkpoint reference
+        # because its data is already loaded in the model
+        params["checkpoint"] = None
 
         return cls(**params)

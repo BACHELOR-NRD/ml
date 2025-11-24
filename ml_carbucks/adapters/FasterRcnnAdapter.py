@@ -64,7 +64,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
     # --- MAIN METHODS ---
 
-    def setup(self) -> "FasterRcnnAdapter":
+    def _setup(self) -> "FasterRcnnAdapter":
         if self.weights == "DEFAULT":
             self.weights = "V1"
 

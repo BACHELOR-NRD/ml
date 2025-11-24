@@ -301,7 +301,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 class YoloUltralyticsAdapter(UltralyticsAdapter):
     # --- MAIN METHODS ---
 
-    def setup(self) -> "YoloUltralyticsAdapter":
+    def _setup(self) -> "YoloUltralyticsAdapter":
         if self.weights == "DEFAULT":
             self.weights = "yolo11l.pt"
 
@@ -376,7 +376,7 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
 
     # --- MAIN METHODS ---
 
-    def setup(self) -> "RtdetrUltralyticsAdapter":
+    def _setup(self) -> "RtdetrUltralyticsAdapter":
         if self.weights == "DEFAULT":
             self.weights = "rtdetr-l.pt"
 
