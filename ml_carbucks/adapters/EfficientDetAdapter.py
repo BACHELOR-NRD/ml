@@ -65,7 +65,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
     # --- MAIN METHODS ---
 
-    def setup(self) -> "EfficientDetAdapter":
+    def _setup(self) -> "EfficientDetAdapter":
         if self.weights == "DEFAULT":
             self.weights = "tf_efficientdet_d0"
 

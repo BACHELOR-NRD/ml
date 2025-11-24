@@ -135,7 +135,7 @@ def create_ensembling_opt_prestep(
             fold_train_datasets = train_folds[fold_idx]
             fold_val_datasets = val_folds[fold_idx]
 
-            new_adapters = [adapter.clone().setup() for adapter in adapters]
+            new_adapters = [adapter.clone() for adapter in adapters]
 
             logger.info(f"Processing fold {fold_idx + 1}/{len(train_folds)}")
 
@@ -266,7 +266,7 @@ def create_ensemble(
             "Full datasets for ensemble training not provided. EnsembleModel will be created without fitting."
         )
     else:
-        ensemble_model.setup().fit(final_datasets)
+        ensemble_model.fit(final_datasets)
 
     ensemble_model.save(results_dir / "ensemble" / runtime, suffix=runtime)
 

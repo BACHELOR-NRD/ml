@@ -51,7 +51,7 @@ def load_adapters_from_hyperopt(
     for file in hyperopt_models_dir.glob(load_pattern):
         for adapter_class in possible_adapter_classes:
             try:
-                adapter = adapter_class(checkpoint=str(file)).setup().clone(clean=True)
+                adapter = adapter_class(checkpoint=str(file))
                 adapters.append(adapter)
                 logger.info(f"Loaded adapter from {file}")
                 break
@@ -154,24 +154,16 @@ if __name__ == "__main__":
     # adapters = [
     #     YoloUltralyticsAdapter(
     #         checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/YoloUltralyticsAdapter_model.pkl"
-    #     )
-    #     .setup()
-    #     .clone(clean=True),
+    #     ),
     #     RtdetrUltralyticsAdapter(
     #         checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/RtdetrUltralyticsAdapter_model.pkl"
-    #     )
-    #     .setup()
-    #     .clone(clean=True),
+    #     ),
     #     FasterRcnnAdapter(
     #         checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/FasterRcnnAdapter_model.pkl"
-    #     )
-    #     .setup()
-    #     .clone(clean=True),
+    #     ),
     #     EfficientDetAdapter(
     #         checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/EfficientDetAdapter_model.pkl"
-    #     )
-    #     .setup()
-    #     .clone(clean=True),
+    #     ),
     # ]
     # runtime = "20251123_155224_ensemble_initial"
 
