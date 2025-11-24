@@ -29,7 +29,11 @@ class TrialParamWrapper:
             "lr": trial.suggest_float("lr", 1e-4, 5e-3, log=True),
             "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
         }
-        if self.version == "v1":
+        if self.version not in ("v1", "v2"):
+            raise ValueError(
+                f"YOLO parameters are only available for versions 'v1' and 'v2', got '{self.version}'"
+            )
+        elif self.version == "v1":
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["yolo11m.pt"]),
@@ -44,7 +48,7 @@ class TrialParamWrapper:
                     ),
                 }
             )
-        if self.version == "v2":
+        else:
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["yolo11x.pt"]),
@@ -70,7 +74,11 @@ class TrialParamWrapper:
             "lr": trial.suggest_float("lr", 1e-4, 5e-3, log=True),
             "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
         }
-        if self.version == "v1":
+        if self.version not in ("v1", "v2"):
+            raise ValueError(
+                f"RTDETR parameters are only available for versions 'v1' and 'v2', got '{self.version}'"
+            )
+        elif self.version == "v1":
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["rtdetr-l.pt"]),
@@ -85,7 +93,7 @@ class TrialParamWrapper:
                     ),
                 }
             )
-        if self.version == "v2":
+        else:
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["rtdetr-x.pt"]),
@@ -116,7 +124,11 @@ class TrialParamWrapper:
             # ),
         }
 
-        if self.version == "v1":
+        if self.version not in ("v1", "v2"):
+            raise ValueError(
+                f"FasterRCNN parameters are only available for versions 'v1' and 'v2', got '{self.version}'"
+            )
+        elif self.version == "v1":
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["V1"]),
@@ -130,7 +142,7 @@ class TrialParamWrapper:
                     ),
                 }
             )
-        if self.version == "v2":
+        else:
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["V2"]),
@@ -157,7 +169,11 @@ class TrialParamWrapper:
             "loader": trial.suggest_categorical("loader", ["inbuilt"]),
         }
 
-        if self.version == "v1":
+        if self.version not in ("v1", "v2"):
+            raise ValueError(
+                f"EfficientDet parameters are only available for versions 'v1' and 'v2', got '{self.version}'"
+            )
+        elif self.version == "v1":
             params.update(
                 {
                     "weights": trial.suggest_categorical(
@@ -173,7 +189,7 @@ class TrialParamWrapper:
                     ),
                 }
             )
-        if self.version == "v2":
+        else:
             params.update(
                 {
                     "weights": trial.suggest_categorical(
