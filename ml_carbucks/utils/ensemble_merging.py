@@ -160,13 +160,51 @@ def scale_scores_with_trust(
     return scaled
 
 
+def scale_scores_with_exponents(
+    preds_list: list[list[torch.Tensor]],
+    exponents: list[float],
+) -> list[list[torch.Tensor]]:
+    """
+    preds_list: list over adapters → list over images → tensor[N,6]
+    exponents: list of floats, one per adapter
+    tensor format: [x1,y1,x2,y2,score,label]
+    applies: score = score ** exponent_i
+    """
+    if len(preds_list) != len(exponents):
+        raise ValueError(
+            f"len(preds_list)={len(preds_list)} does not match len(exponents)={len(exponents)}"
+        )
+
+    scaled = []
+    for preds, exp in zip(preds_list, exponents):
+        if exp == 1.0:
+            # Fast path — no change
+            scaled.append([p.clone() for p in preds])
+            continue
+
+        per_adapter_scaled = []
+        for p in preds:
+            if len(p) == 0:
+                per_adapter_scaled.append(p.clone())
+                continue
+
+            p2 = p.clone()
+            p2[:, 4] = p2[:, 4].pow(exp)
+            per_adapter_scaled.append(p2)
+
+        scaled.append(per_adapter_scaled)
+
+    return scaled
+
+
 def fuse_adapters_predictions(
     adapters_predictions: list[list[ADAPTER_PREDICTION]],
     max_detections: int,
     iou_threshold: float,
     conf_threshold: float,
     strategy: Optional[Literal["nms", "wbf"]] = None,
-    trust_weights: Optional[list[float]] = None,
+    trust_factors: Optional[list[float]] = None,
+    exponent_factors: Optional[list[float]] = None,
     score_normalization_method: Optional[
         Literal["minmax", "zscore", "quantile"]
     ] = None,
@@ -209,12 +247,21 @@ def fuse_adapters_predictions(
             distributions=distributions,
         )
 
-    if trust_weights is not None:
-        if len(trust_weights) != len(tensors_for_fusion):
+    if trust_factors is not None:
+        if len(trust_factors) != len(tensors_for_fusion):
             raise ValueError(
-                f"trust_weights length {len(trust_weights)}!= num adapters {len(tensors_for_fusion)}"
+                f"trust_factors length {len(trust_factors)}!= num adapters {len(tensors_for_fusion)}"
             )
-        tensors_for_fusion = scale_scores_with_trust(tensors_for_fusion, trust_weights)
+        tensors_for_fusion = scale_scores_with_trust(tensors_for_fusion, trust_factors)
+
+    if exponent_factors is not None:
+        if len(exponent_factors) != len(tensors_for_fusion):
+            raise ValueError(
+                f"exponent_factors length {len(exponent_factors)}!= num adapters {len(tensors_for_fusion)}"
+            )
+        tensors_for_fusion = scale_scores_with_exponents(
+            tensors_for_fusion, exponent_factors
+        )
 
     combined_list_of_tensors = []
     for img_idx in range(num_images):
