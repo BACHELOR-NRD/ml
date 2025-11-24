@@ -104,6 +104,8 @@ def execute_simple_study(
     append_trials: Optional[list[dict]] = None,
     hyper_suffix: str = "hyper",
     study_attributes: Optional[dict] = None,
+    n_jobs: int = 1,
+    sampler: optuna.samplers.BaseSampler | None = None,
 ):
 
     if study_attributes is None:
@@ -121,6 +123,7 @@ def execute_simple_study(
 
     metadata.update(
         {
+            "n_jobs": n_jobs,
             "hyper_name": hyper_name,
             "study_name": study_name,
             "trials_planned": n_trials,
@@ -145,6 +148,7 @@ def execute_simple_study(
         study_name=f"{hyper_name}_{study_name}",
         load_if_exists=True,
         storage=f"sqlite:///{sql_path}",
+        sampler=sampler,
     )
     study.set_user_attr("study_attributes", study_attributes)
 
@@ -176,6 +180,7 @@ def execute_simple_study(
             callbacks=[early_callback] if early_callback else None,
             timeout=optimization_timeout,
             gc_after_trial=True,
+            n_jobs=n_jobs,
         )
     else:
         logger.warning(
