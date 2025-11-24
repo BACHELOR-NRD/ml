@@ -11,7 +11,7 @@ logger = setup_logger(__name__)
 
 @dataclass
 class TrialParamWrapper:
-    version: Literal["v1", "v2", "v3", "v4"] = "v1"
+    version: Literal["v1", "v2", "v3", "v4", "v5"] = "v1"
     ensemble_size: Optional[int] = None
     """A class that is to help the creation of the trial parameters."""
 
@@ -197,7 +197,7 @@ class TrialParamWrapper:
 
     def _get_ensemble_model_params(self, trial: optuna.Trial) -> Dict[str, Any]:
         # fmt: off
-        if self.version not in ["v3", "v4"]:
+        if self.version not in ["v3", "v4", "v5"]:
             raise ValueError(
                 f"Ensemble model parameters are only available for versions 'v3' and 'v4', got '{self.version}'"
             )
@@ -205,19 +205,27 @@ class TrialParamWrapper:
         elif self.version == "v3":
             params = {
                 "fusion_strategy": trial.suggest_categorical("fusion_strategy", ["nms"]),
-                "fusion_conf_threshold": trial.suggest_float("fusion_conf_threshold", 0.00, 0.25),
+                "fusion_conf_threshold": trial.suggest_float("fusion_conf_threshold", 0.05, 0.60),
                 "fusion_iou_threshold": trial.suggest_float("fusion_iou_threshold", 0.35, 0.75),
                 "fusion_max_detections": trial.suggest_int("fusion_max_detections", 5, 5),
-                "fusion_norm_method": trial.suggest_categorical("fusion_norm_method", ["zscore", None]),
+                "fusion_norm_method": trial.suggest_categorical("fusion_norm_method", ["zscore"]),
             }
 
-        else:
+        elif self.version == "v4":
             params = {
                 "fusion_strategy": trial.suggest_categorical("fusion_strategy", ["wbf"]),
-                "fusion_conf_threshold": trial.suggest_float("fusion_conf_threshold", 0.00, 0.20),
-                "fusion_iou_threshold": trial.suggest_float("fusion_iou_threshold", 0.45, 0.85),
+                "fusion_conf_threshold": trial.suggest_float("fusion_conf_threshold", 0.05, 0.60),
+                "fusion_iou_threshold": trial.suggest_float("fusion_iou_threshold", 0.45, 0.75),
                 "fusion_max_detections": trial.suggest_int("fusion_max_detections", 5, 5),
-                "fusion_norm_method": trial.suggest_categorical("fusion_norm_method", ["zscore", None]),
+                "fusion_norm_method": trial.suggest_categorical("fusion_norm_method", ["zscore"]),
+            }
+        else:
+            params = {
+                "fusion_strategy": trial.suggest_categorical("fusion_strategy", ["nms", "wbf"]),
+                "fusion_conf_threshold": trial.suggest_float("fusion_conf_threshold", 0.00, 0.60),
+                "fusion_iou_threshold": trial.suggest_float("fusion_iou_threshold", 0.35, 0.75),
+                "fusion_max_detections": trial.suggest_int("fusion_max_detections", 5, 5),
+                "fusion_norm_method": trial.suggest_categorical("fusion_norm_method", ["zscore", "minmax", "quantile"]),
             }
 
         if self.ensemble_size is None:
@@ -225,17 +233,44 @@ class TrialParamWrapper:
             params["fusion_trust_factors"] = trial.suggest_categorical("fusion_trust_factors", [None])
             params["fusion_exponent_factors"] = trial.suggest_categorical("fusion_exponent_factors", [None])
         else:
-            trust_factors = [trial.suggest_float(f"trust_factor_{i}", 0.25, 3.0) for i in range(self.ensemble_size)]
-            params["fusion_trust_factors"] = trust_factors
+            for i in range(self.ensemble_size):
+                params[f"fusion_trust_factor_{i}"] = trial.suggest_float(f"fusion_trust_factor_{i}", 0.5, 2.0)
+                if self.version in ("v4", "v5"):
+                    params[f"fusion_exponent_factor_{i}"] = trial.suggest_float(f"fusion_exponent_factor_{i}", 0.5, 2.0)
 
-            if self.version == "v4":
-                exponent_factors = [trial.suggest_float(f"exponent_factor_{i}", 0.5, 4.0) for i in range(self.ensemble_size)]
-                params["fusion_exponent_factors"] = exponent_factors
-            else:
-                params["fusion_exponent_factors"] = trial.suggest_categorical("fusion_exponent_factors", [None])
         # fmt: on
 
-        return params
+        final_params = self.convert_ensemble_params_to_model_format(
+            params, ensemble_size=self.ensemble_size
+        )
+
+        return final_params
+
+    @staticmethod
+    def convert_ensemble_params_to_model_format(
+        params: Dict[str, Any], ensemble_size: Optional[int] = None
+    ) -> Dict[str, Any]:
+        final_params = {k: v for k, v in params.items() if "factor_" not in k}
+
+        if ensemble_size is None:
+            final_params["fusion_trust_factors"] = None
+            final_params["fusion_exponent_factors"] = None
+        else:
+            if "fusion_trust_factor_0" in params:
+                final_params["fusion_trust_factors"] = [
+                    params[f"fusion_trust_factor_{i}"] for i in range(ensemble_size)
+                ]
+            else:
+                final_params["fusion_trust_factors"] = None
+
+            if "fusion_exponent_factor_0" in params:
+                final_params["fusion_exponent_factors"] = [
+                    params[f"fusion_exponent_factor_{i}"] for i in range(ensemble_size)
+                ]
+            else:
+                final_params["fusion_exponent_factors"] = None
+
+        return final_params
 
     def get_param(
         self,

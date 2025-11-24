@@ -3,6 +3,7 @@ from pathlib import Path
 from functools import partial
 from typing import List, Literal, Type
 
+import optuna
 import pandas as pd
 
 from ml_carbucks import OPTUNA_DIR
@@ -66,11 +67,13 @@ def main(
     results_dir: Path,
     train_folds: list[ADAPTER_DATASETS],
     val_folds: list[ADAPTER_DATASETS],
-    param_wrapper_version: Literal["v3", "v4"],
+    param_wrapper_version: Literal["v3", "v4", "v5"],
     final_datasets: ADAPTER_DATASETS | None = None,
     n_trials: int = 25,
     patience: int = -1,
     min_percentage_improvement: float = 0.01,
+    n_jobs: int = 1,
+    sampler: optuna.samplers.BaseSampler | None = None,
 ) -> tuple[EnsembleModel, pd.Series]:
 
     adapters_predictions, ground_truths, distributions, metadata = (
@@ -116,6 +119,8 @@ def main(
             "param_wrapper_version": param_wrapper_version,
             **metadata,
         },
+        n_jobs=n_jobs,
+        sampler=sampler,
         hyper_suffix="ensemble",
         # append_trials=[default_adapter_params], # NOTE: this could be added to add default ensenble params
     )
@@ -176,8 +181,12 @@ if __name__ == "__main__":
         results_dir=OPTUNA_DIR,
         n_trials=400,
         patience=75,
-        param_wrapper_version="v4",  # NOTE: v4 only allows WBF and v3 only NMS
+        # NOTE: v4 only allows WBF and v3 only NMS, v5 is combined but also unnecessary exponents for nms
+        param_wrapper_version="v3",
         min_percentage_improvement=0.01,
+        n_jobs=1,
+        # NOTE: default n_startup_trials is 10
+        sampler=optuna.samplers.TPESampler(n_startup_trials=30),
         train_folds=DatasetsPathManager.CARBUCKS_TRAIN_CV,
         val_folds=DatasetsPathManager.CARBUCKS_VAL_CV,
         final_datasets=DatasetsPathManager.CARBUCKS_TRAIN_ALL,

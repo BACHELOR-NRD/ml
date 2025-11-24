@@ -34,7 +34,7 @@ def create_objective(
     adapters_predictions: List[List[ADAPTER_PREDICTION]],
     ground_truths: List[dict],
     distributions: List[ScoreDistribution],
-    param_wrapper_version: Literal["v3", "v4"],
+    param_wrapper_version: Literal["v3", "v4", "v5"],
 ) -> Callable:
     """
     Ensemble optimization objective function creator.
@@ -253,8 +253,11 @@ def create_ensemble(
     # 2. loads all hyperparameters and setups the adapter
     # 3. finally, clone again but this time clean the saved weights to avoid carrying over any trained weights
     ensemble_adapters = [adapter.clone() for adapter in adapters]
+    ensemble_params = TrialParamWrapper.convert_ensemble_params_to_model_format(
+        params, ensemble_size=len(ensemble_adapters)
+    )
     ensemble_model = EnsembleModel(
-        **params,
+        **ensemble_params,
         adapters=ensemble_adapters,
         distributions=distributions,
     )
