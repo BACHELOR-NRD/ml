@@ -194,12 +194,13 @@ class BaseDetectionAdapter(ABC):
         return cls(**params)
 
     def hash(self):
+        params = self.get_params(skip=["checkpoint"])
         stable_hash = int(
             hashlib.sha256(
                 str(
                     (
                         type(self).__name__,
-                        tuple(sorted(self.get_params().items())),
+                        tuple(sorted(params.items())),
                     )
                 ).encode()
             ).hexdigest(),
