@@ -200,7 +200,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
                 }
             )
 
-        self.model.train(  # type: ignore
+        results = self.model.train(  # type: ignore
             # --- Core parameters ---
             data=data_yaml,
             seed=self.seed,
@@ -220,17 +220,10 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             **extra_params,
         )
 
-        results = self.model.val(
-            data=data_yaml,
-            verbose=self.verbose,
-            project=results_path,
-            name=f"{results_name}_val",
-        )
-
         metrics: ADAPTER_METRICS = {
             "map_50": results.results_dict["metrics/mAP50(B)"],
             "map_50_95": results.results_dict["metrics/mAP50-95(B)"],
-            "map_75": -np.inf,  # FIXME: verify that the key is correct: results.results_dict["metrics/mAP75(B)"]
+            "map_75": -np.inf,  # FIXME: no metric is produced for mAP75?
             "classes": [],  # FIXME: needs to be added
         }
 
