@@ -22,6 +22,7 @@ def compute_ensemble_prestep_hash(
     Returns:
     - The hexadecimal digest string of the combined hash
     """
+
     # Collect adapter hashes
     adapter_hashes = [adapter.hash() for adapter in adapters]
 
@@ -29,8 +30,15 @@ def compute_ensemble_prestep_hash(
     train_fold_strs = [str(ds[1]) for fold in train_folds for ds in fold]
     val_fold_strs = [str(ds[1]) for fold in val_folds for ds in fold]
 
+    fold_hash = int(
+        hashlib.sha256(
+            str(tuple(train_fold_strs + val_fold_strs)).encode()
+        ).hexdigest(),
+        16,
+    )
+
     # Combine all parts into one tuple and convert to string
-    combined_data = tuple(adapter_hashes + train_fold_strs + val_fold_strs)
+    combined_data = tuple(adapter_hashes + [fold_hash])
     combined_str = str(combined_data).encode()
 
     # Compute and return blake2b hash hex digest
