@@ -81,7 +81,6 @@ def main(
             adapters=adapters,
             train_folds=train_folds,
             val_folds=val_folds,
-            runtime=runtime,
             results_dir=results_dir,
         )
     )
