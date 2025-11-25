@@ -20,6 +20,7 @@ from ml_carbucks.utils.ensemble_merging import (
     calculate_score_distribution,
     fuse_adapters_predictions,
 )
+from ml_carbucks.utils.hashing import compute_ensemble_prestep_hash
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.postprocessing import (
     convert_pred2eval,
@@ -92,7 +93,6 @@ def create_ensembling_opt_prestep(
     adapters: List[BaseDetectionAdapter],
     train_folds: List[ADAPTER_DATASETS],
     val_folds: List[ADAPTER_DATASETS],
-    runtime: str,
     results_dir: Path,
 ) -> tuple[
     List[List[ADAPTER_PREDICTION]], List[dict], List[ScoreDistribution], Dict[str, Any]
@@ -107,7 +107,15 @@ def create_ensembling_opt_prestep(
     """
 
     # NOTE: this function is a MESS but it dont want to fix it now
-    saved_prestep_path = results_dir / "ensemble" / runtime / f"prestep_{runtime}.pkl"
+
+    all_hash = compute_ensemble_prestep_hash(
+        adapters=adapters,
+        train_folds=train_folds,
+        val_folds=val_folds,
+        digest_size=8,
+    )
+
+    saved_prestep_path = results_dir / "ensemble" / f"prestep_{all_hash}.pkl"
 
     adapters_predictions: List[List[ADAPTER_PREDICTION]] = [
         [] for _ in range(len(adapters))

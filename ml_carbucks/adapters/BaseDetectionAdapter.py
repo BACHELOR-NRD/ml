@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import hashlib
 from pathlib import Path
 from typing import (
     Any,
@@ -191,3 +192,17 @@ class BaseDetectionAdapter(ABC):
         params["checkpoint"] = None
 
         return cls(**params)
+
+    def hash(self):
+        stable_hash = int(
+            hashlib.sha256(
+                str(
+                    (
+                        type(self).__name__,
+                        tuple(sorted(self.get_params().items())),
+                    )
+                ).encode()
+            ).hexdigest(),
+            16,
+        )
+        return stable_hash
