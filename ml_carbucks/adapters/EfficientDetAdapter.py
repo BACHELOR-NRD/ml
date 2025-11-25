@@ -354,7 +354,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                 show = True
             elif visualize == "last" and epoch == epochs:
                 show = True
-            saver.plot(show=show)
+            saver.plot(show=show, secondaries_y=["val_map", "val_map_50"])
 
         if val_metrics is None:
             raise RuntimeError("Validation metrics were not computed during debugging.")
