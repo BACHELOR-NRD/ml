@@ -1,4 +1,3 @@
-import datetime as dt
 from pathlib import Path
 from functools import partial
 from typing import Literal, Optional
@@ -19,6 +18,7 @@ from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks import OPTUNA_DIR
 from ml_carbucks.utils.DatasetsPathManager import DatasetsPathManager
 from ml_carbucks.utils.cross_validation import stratified_cross_valitation  # noqa: F401
+from ml_carbucks.utils.optimization import get_runtime  # noqa: F401
 
 logger = setup_logger(__name__)
 
@@ -51,7 +51,10 @@ def main(
         # since some parameters are mock values then we exclude them
         params = adapter.get_params()
         default_adapter_params = {
-            k: v for k, v in params.items() if k not in {"img_size", "epochs"}
+            k: v
+            for k, v in params.items()
+            if k
+            not in {"img_size", "epochs", "weights", "batch_size", "accumulation_steps"}
         }
 
         result = execute_simple_study(
@@ -101,10 +104,7 @@ def main(
 
 if __name__ == "__main__":
 
-    # NOTE: semantic names for each "run"
-    runtime_prefix = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    runtime_suffix = "heavy_models"
-    runtime = f"{runtime_prefix}_{runtime_suffix}"
+    runtime = get_runtime(title="", override="20251123_223647_heavy_models")
 
     # NOTE: defult params are setup here
     main(
@@ -120,7 +120,7 @@ if __name__ == "__main__":
         param_wrapper_version="v2",  # NOTE: v2 will use bigger image sizes and epochs so it takes longer
         plot_with_debug=True,
         results_dir=OPTUNA_DIR,
-        n_trials=20,
+        n_trials=30,
         patience=15,
         min_percentage_improvement=0.01,
         optimization_timeout=12 * 3600,  # N hours

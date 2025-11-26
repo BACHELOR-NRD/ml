@@ -26,6 +26,7 @@ from ml_carbucks.optmization.ensemble_objective import (
 from ml_carbucks.optmization.simple_study import execute_simple_study
 from ml_carbucks.utils.DatasetsPathManager import DatasetsPathManager
 from ml_carbucks.utils.logger import setup_logger
+from ml_carbucks.utils.optimization import get_runtime
 
 logger = setup_logger(__name__)
 
@@ -57,6 +58,11 @@ def load_adapters_from_hyperopt(
                 break
             except ValueError:
                 pass
+
+    if len(adapters) == 0:
+        raise ValueError(
+            f"No adapters found in {hyperopt_models_dir} with pattern {load_pattern}"
+        )
 
     return adapters
 
@@ -143,12 +149,11 @@ def main(
 
 if __name__ == "__main__":
 
+    runtime = get_runtime(title="<hyper_runtime>")
+
     adapters = load_adapters_from_hyperopt(
-        "<hyper_runtime>", load_pattern="best_pickled_*_model.pkl"
+        runtime, load_pattern="best_pickled_*_model.pkl"
     )
-    runtime_prefix = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    runtime_suffix = "ensemble_initial"
-    runtime = f"{runtime_prefix}_{runtime_suffix}"
 
     # NOTE: manual override for debugging
     # adapters = [

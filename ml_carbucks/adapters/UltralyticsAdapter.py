@@ -221,7 +221,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             momentum=self.momentum,
             weight_decay=self.weight_decay,
             optimizer=self.optimizer,
-            accumulate=self.accumulation_steps,
+            nbs=self.batch_size * self.accumulation_steps,
             cos_lr=self.scheduler == "cosine",
             **extra_params,
         )

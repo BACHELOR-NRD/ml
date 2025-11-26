@@ -159,9 +159,7 @@ class BaseDetectionAdapter(ABC):
 
         if "weights" in params and params["weights"] != old_weights:
             logger.warning(
-                "Weights parameter changed. Re-running setup to load new weights model."
-            )
-            logger.warning(
+                "Weights parameter changed. Re-running setup to load new weights model. "
                 "If you did not intend to change weights, please inspect !!!"
             )
             self._setup()
