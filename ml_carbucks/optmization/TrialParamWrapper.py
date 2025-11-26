@@ -43,8 +43,7 @@ class TrialParamWrapper:
                     "weights": trial.suggest_categorical("weights", ["yolo11m.pt"]),
                     "img_size": trial.suggest_categorical("img_size", self.V1_IMG_SIZE_OPTIONS),
                     "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
-                    "accumulation_steps": trial.suggest_categorical("accumulation_steps", [1]),
-                    
+                    "accumulation_steps": trial.suggest_categorical("accumulation_steps", [1]), 
                 }
             )
         else:

@@ -333,7 +333,7 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
             # --- Inference-time thresholds ---
             conf=0.0,
             iou=1.0,
-            max_det=max_detections * 3,
+            max_det=max_detections * 10,
         )
 
         all_detections: List[ADAPTER_PREDICTION] = []
@@ -409,7 +409,7 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
             verbose=False,
             # --- Inference-time thresholds ---
             conf=0.0,
-            max_det=max_detections * 3,
+            max_det=max_detections * 10,
         )
 
         all_detections: List[ADAPTER_PREDICTION] = []
