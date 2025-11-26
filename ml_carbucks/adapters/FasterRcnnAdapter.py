@@ -47,6 +47,9 @@ FASTERRCNN_OPTIMIZER_OPTIONS = Literal["Adam", "AdamW", "RAdam", "SGD"]
 @dataclass
 class FasterRcnnAdapter(BaseDetectionAdapter):
 
+    # --- SETUP PARAMETERS ---
+    weights: str = "V1"
+
     # --- HYPER PARAMETERS ---
 
     # lr_backbone: float = 5e-5
@@ -57,7 +60,8 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     clip_gradients: Optional[float] = None
     momentum: float = 0.9  # Used for SGD and RMSprop
     strategy: Literal["nms", "wbf"] = "nms"
-    accumulation_steps: int = 1
+    batch_size: int = 8
+    accumulation_steps: int = 4
     scheduler: Optional[Literal["cosine"]] = None
 
     # --- SETUP PARAMETERS ---
@@ -68,8 +72,6 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     # --- MAIN METHODS ---
 
     def _setup(self) -> "FasterRcnnAdapter":
-        if self.weights == "DEFAULT":
-            self.weights = "V1"
 
         if self.checkpoint is not None:
             self._load_from_checkpoint(self.checkpoint)  # type: ignore
@@ -77,7 +79,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         elif self.weights in ("V1", "V2"):
 
             self._create_model_wrapper(
-                weights=str(self.weights),
+                weights=self.weights,
                 img_size=self.img_size,
                 n_classes=self.n_classes,
             )

@@ -60,12 +60,11 @@ class BaseDetectionAdapter(ABC):
     # --- HYPER PARAMETERS ---
 
     img_size: int = 256
-    batch_size: int = 16
     epochs: int = 1
 
     # --- SETUP PARAMETERS ---
 
-    weights: str | Path = field(default="DEFAULT")
+    weights: str = "DEFAULT"
     checkpoint: Optional[str | Path | dict] = field(default=None, repr=False)
     device: str = field(init=False)
     model: Any = field(init=False, default=None, repr=False)

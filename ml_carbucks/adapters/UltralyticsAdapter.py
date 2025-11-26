@@ -40,7 +40,8 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     lr: float = 1e-3
     momentum: float = 0.9
     weight_decay: float = 5e-4
-    accumulation_steps: int = 1
+    batch_size: int = 16
+    accumulation_steps: int = 4
     scheduler: Optional[Literal["cosine"]] = None
 
     # --- SETUP PARAMETERS ---
@@ -114,7 +115,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             momentum=self.momentum,
             weight_decay=self.weight_decay,
             optimizer=self.optimizer,
-            accumulate=self.accumulation_steps,
+            nbs=self.batch_size * self.accumulation_steps,
             cos_lr=self.scheduler == "cosine",
             **extra_params,
         )
@@ -139,6 +140,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         logger.info(f"YOLO dataset YAML created at: {data_yaml}")
 
         results = self.model.val(
+            imgsz=self.img_size,
             data=data_yaml,
             verbose=self.verbose,
             project=self.project_dir,
@@ -296,17 +298,19 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
 @dataclass
 class YoloUltralyticsAdapter(UltralyticsAdapter):
+
+    # --- SETUP PARAMETERS ---
+    weights: str = "yolo11l.pt"
+
     # --- MAIN METHODS ---
 
     def _setup(self) -> "YoloUltralyticsAdapter":
-        if self.weights == "DEFAULT":
-            self.weights = "yolo11l.pt"
 
         if self.checkpoint is not None:
             self._load_from_checkpoint(self.checkpoint, model_class=YOLO)
 
         else:
-            self.model = YOLO(str(self.weights))  # type: ignore
+            self.model = YOLO(self.weights)
 
         self.model.to(self.device)
 
@@ -371,17 +375,18 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
 @dataclass
 class RtdetrUltralyticsAdapter(UltralyticsAdapter):
 
+    # --- SETUP PARAMETERS ---
+    weights: str = "rtdetr-l.pt"
+
     # --- MAIN METHODS ---
 
     def _setup(self) -> "RtdetrUltralyticsAdapter":
-        if self.weights == "DEFAULT":
-            self.weights = "rtdetr-l.pt"
 
         if self.checkpoint is not None:
             self._load_from_checkpoint(self.checkpoint, model_class=RTDETR)
 
         else:
-            self.model = RTDETR(str(self.weights))
+            self.model = RTDETR(self.weights)
 
         self.model.to(self.device)
 

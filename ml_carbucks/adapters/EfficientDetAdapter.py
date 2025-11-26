@@ -52,6 +52,9 @@ EFFICIENTDET_OPTIMIZER_OPTIONS = Literal["momentum", "adamw"]
 @dataclass
 class EfficientDetAdapter(BaseDetectionAdapter):
 
+    # --- SETUP PARAMETERS ---
+    weights: str = "tf_efficientdet_d0"
+
     # --- HYPER PARAMETERS ---
 
     optimizer: EFFICIENTDET_OPTIMIZER_OPTIONS = "momentum"
@@ -59,7 +62,8 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     weight_decay: float = 9e-6
     loader: Literal["inbuilt", "custom"] = "inbuilt"
     strategy: Literal["nms", "wbf"] = "nms"
-    accumulation_steps: int = 1
+    batch_size: int = 8
+    accumulation_steps: int = 4
     scheduler: Optional[Literal["cosine"]] = None
 
     # --- SETUP PARAMETERS ---
@@ -70,8 +74,6 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     # --- MAIN METHODS ---
 
     def _setup(self) -> "EfficientDetAdapter":
-        if self.weights == "DEFAULT":
-            self.weights = "tf_efficientdet_d0"
 
         if self.checkpoint is not None:
             self._load_from_checkpoint(self.checkpoint)
@@ -82,10 +84,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             )
 
         else:
-
-            self._create_model_wrapper(
-                img_size=self.img_size, backbone=str(self.weights)
-            )
+            self._create_model_wrapper(img_size=self.img_size, backbone=self.weights)
 
         self.model.to(self.device)
 
@@ -432,7 +431,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         self._create_model_wrapper(
             img_size=self.img_size,
-            backbone=str(self.weights),
+            backbone=self.weights,
         )
 
         self.model.model.load_state_dict(obj["model"])
