@@ -123,7 +123,7 @@ class TrialParamWrapper:
                     "weights": trial.suggest_categorical("weights", ["V2"]),
                     "img_size": trial.suggest_categorical("img_size", self.V2_IMG_SIZE_OPTIONS),
                     "batch_size": trial.suggest_categorical("batch_size", [8]),
-                    "accumulation_steps": trial.suggest_categorical("accumulation_steps", [2, 4]),
+                    "accumulation_steps": trial.suggest_categorical("accumulation_steps", [2]),  # NOTE: should also include 4?
                 }
             )
 
