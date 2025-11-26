@@ -15,7 +15,7 @@ from effdet.data.loader import PrefetchLoader
 from effdet.data import resolve_input_config, resolve_fill_color
 from effdet.bench import DetBenchPredict  # noqa F401
 from effdet.data.transforms import ResizePad, ImageToNumpy, Compose
-from timm.optim.optim_factory import create_optimizer_v2  # type: ignore
+from timm.optim import create_optimizer_v2  # type: ignore
 from timm.scheduler.scheduler import Scheduler
 
 from ml_carbucks.utils.postprocessing import (
