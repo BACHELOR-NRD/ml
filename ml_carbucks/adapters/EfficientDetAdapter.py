@@ -11,10 +11,12 @@ from PIL import Image
 from torch.utils.data.dataloader import DataLoader
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from effdet import create_model, create_loader
+from effdet.data.loader import PrefetchLoader
 from effdet.data import resolve_input_config, resolve_fill_color
 from effdet.bench import DetBenchPredict  # noqa F401
 from effdet.data.transforms import ResizePad, ImageToNumpy, Compose
-from timm.optim._optim_factory import create_optimizer_v2
+from timm.optim.optim_factory import create_optimizer_v2  # type: ignore
+from timm.scheduler.scheduler import Scheduler
 
 from ml_carbucks.utils.postprocessing import (
     convert_pred2eval,
@@ -40,6 +42,7 @@ from ml_carbucks.patches.effdet import (
     create_dataset_custom,
 )
 from ml_carbucks.utils.logger import setup_logger
+from ml_carbucks.utils.training import create_scheduler
 
 logger = setup_logger(__name__)
 
@@ -57,6 +60,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
     loader: Literal["inbuilt", "custom"] = "inbuilt"
     strategy: Literal["nms", "wbf"] = "nms"
     accumulation_steps: int = 1
+    scheduler: Optional[Literal["cosine"]] = None
 
     # --- SETUP PARAMETERS ---
 
@@ -107,24 +111,39 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             weight_decay=weight_decay,
         )
 
+        scheduler = create_scheduler(
+            optimizer=optimizer,
+            num_batches=len(train_loader),
+            epochs=epochs,
+            accumulation_steps=self.accumulation_steps,
+            lr=lr,
+            scheduler=self.scheduler,
+        )
+
         for epoch in range(1, epochs + 1):
             logger.info(f"Epoch {epoch}/{epochs}")
 
-            _ = self.train_epoch(optimizer, train_loader)  # type: ignore
+            _ = self.train_epoch(epoch, optimizer, scheduler, train_loader)  # type: ignore
 
         return self
 
     def train_epoch(
-        self, optimizer: torch.optim.Optimizer, loader: DataLoader
+        self,
+        epoch: int,
+        optimizer: torch.optim.Optimizer,
+        scheduler: Optional[Scheduler],
+        loader: DataLoader | PrefetchLoader,
     ) -> float:
         self.model.train()
         total_loss = 0.0
+        num_batches = len(loader)
 
         optimizer.zero_grad()
         cnt = 0
         for imgs, targets in tqdm(
             loader, desc="Training", unit="batch", disable=not self.verbose
         ):
+            cnt += 1
             cimgs, ctargets = self._convert_batch(imgs, targets)
             output = self.model(cimgs, ctargets)
             loss = output["loss"]
@@ -132,17 +151,19 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
             (loss / self.accumulation_steps).backward()
 
-            if (cnt + 1) % self.accumulation_steps == 0:
+            if cnt % self.accumulation_steps == 0:
                 optimizer.step()
                 optimizer.zero_grad()
+                if scheduler is not None:
+                    scheduler.step_update(num_updates=(epoch - 1) * num_batches + cnt)
 
-            cnt += 1
-
-        if (cnt) % self.accumulation_steps != 0:
+        if cnt % self.accumulation_steps != 0:
             optimizer.step()
             optimizer.zero_grad()
+            if scheduler is not None:
+                scheduler.step_update(num_updates=epoch * num_batches + cnt)
 
-        return total_loss
+        return total_loss / num_batches
 
     def evaluate(
         self,
@@ -329,6 +350,14 @@ class EfficientDetAdapter(BaseDetectionAdapter):
             lr=self.lr,
             weight_decay=self.weight_decay,
         )
+        scheduler = create_scheduler(
+            optimizer=optimizer,
+            num_batches=len(train_loader),
+            epochs=epochs,
+            accumulation_steps=self.accumulation_steps,
+            lr=self.lr,
+            scheduler=self.scheduler,
+        )
         saver = ResultSaver(
             path=results_path,
             name=results_name,
@@ -337,7 +366,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         for epoch in range(1, epochs + 1):
             logger.info(f"Epoch {epoch}/{epochs}")
 
-            total_loss = self.train_epoch(optimizer, train_loader)  # type: ignore
+            total_loss = self.train_epoch(epoch, optimizer, scheduler, train_loader)
             val_metrics = self.evaluate(val_datasets)
             saver.save(
                 epoch=epoch,

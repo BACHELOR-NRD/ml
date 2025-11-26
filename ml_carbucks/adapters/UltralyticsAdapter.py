@@ -41,6 +41,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     momentum: float = 0.9
     weight_decay: float = 5e-4
     accumulation_steps: int = 1
+    scheduler: Optional[Literal["cosine"]] = None
 
     # --- SETUP PARAMETERS ---
 
@@ -114,6 +115,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             weight_decay=self.weight_decay,
             optimizer=self.optimizer,
             accumulate=self.accumulation_steps,
+            cos_lr=self.scheduler == "cosine",
             **extra_params,
         )
 
@@ -217,6 +219,8 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             momentum=self.momentum,
             weight_decay=self.weight_decay,
             optimizer=self.optimizer,
+            accumulate=self.accumulation_steps,
+            cos_lr=self.scheduler == "cosine",
             **extra_params,
         )
 

@@ -16,6 +16,7 @@ from torchvision.models.detection.faster_rcnn import (
     FasterRCNN_ResNet50_FPN_V2_Weights,
 )
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
+from timm.scheduler.scheduler import Scheduler
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_METRICS,
@@ -36,6 +37,7 @@ from ml_carbucks.utils.preprocessing import (
     preprocess_images,
 )
 from ml_carbucks.utils.result_saver import ResultSaver
+from ml_carbucks.utils.training import create_scheduler
 
 logger = setup_logger(__name__)
 
@@ -56,6 +58,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     momentum: float = 0.9  # Used for SGD and RMSprop
     strategy: Literal["nms", "wbf"] = "nms"
     accumulation_steps: int = 1
+    scheduler: Optional[Literal["cosine"]] = None
 
     # --- SETUP PARAMETERS ---
 
@@ -97,26 +100,42 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         optimizer = self._create_optimizer()
 
+        # NOTE: this is a speciall case where optimizer has multiple parameter groups with different lrs
+        # in our case we just set the limits for both of them the same way
+        # but it could be parameterized if needed
+        scheduler = create_scheduler(
+            optimizer=optimizer,
+            num_batches=len(loader),
+            epochs=epochs,
+            accumulation_steps=self.accumulation_steps,
+            lr=self.lr_head,
+            scheduler=self.scheduler,
+        )
+
         for epoch in range(1, epochs + 1):
             logger.info(f"Epoch {epoch}/{epochs}")
 
-            _ = self.train_epoch(optimizer, loader)
+            _ = self.train_epoch(epoch, optimizer, scheduler, loader)
 
         return self
 
     def train_epoch(
         self,
+        epoch: int,
         optimizer: torch.optim.Optimizer,
+        scheduler: Optional[Scheduler],
         loader: DataLoader,
     ) -> float:
         self.model.train()
         total_loss = 0.0
+        num_batches = len(loader)
 
         optimizer.zero_grad()
         cnt = 0
         for imgs, targets in tqdm(
             loader, desc="Training", unit="batch", disable=not self.verbose
         ):
+            cnt += 1
             imgs = list(img.to(self.device) for img in imgs)
             targets = [{k: v.to(self.device) for k, v in t.items()} for t in targets]
             loss_dict = self.model(imgs, targets)
@@ -125,19 +144,21 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
             (loss / self.accumulation_steps).backward()  # type: ignore
 
-            if (cnt + 1) % self.accumulation_steps == 0:
+            if cnt % self.accumulation_steps == 0:
                 self._clip_gradients_wrapper()
                 optimizer.step()
                 optimizer.zero_grad()
+                if scheduler is not None:
+                    scheduler.step_update(num_updates=(epoch - 1) * num_batches + cnt)
 
-            cnt += 1
-
-        if (cnt) % self.accumulation_steps != 0:
+        if cnt % self.accumulation_steps != 0:
             self._clip_gradients_wrapper()
             optimizer.step()
             optimizer.zero_grad()
+            if scheduler is not None:
+                scheduler.step_update(num_updates=epoch * num_batches)
 
-        return total_loss
+        return total_loss / num_batches
 
     def evaluate(
         self, datasets: List[Tuple[str | Path, str | Path]]
@@ -258,12 +279,20 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
         epochs = self.epochs
         train_loader = self._create_loader(train_datasets, is_training=True)
         optimizer = self._create_optimizer()
+        scheduler = create_scheduler(
+            optimizer=optimizer,
+            num_batches=len(train_loader),
+            epochs=epochs,
+            accumulation_steps=self.accumulation_steps,
+            lr=self.lr_head,
+            scheduler=self.scheduler,
+        )
         saver = ResultSaver(results_path, name=results_name)
 
         val_metrics: Optional[ADAPTER_METRICS] = None
         for epoch in range(1, epochs + 1):
             logger.info(f"Debug Epoch {epoch}/{epochs}")
-            total_loss = self.train_epoch(optimizer, train_loader)
+            total_loss = self.train_epoch(epoch, optimizer, scheduler, train_loader)
             val_metrics = self.evaluate(val_datasets)
             saver.save(
                 epoch=epoch,
