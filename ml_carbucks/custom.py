@@ -58,7 +58,7 @@ if __name__ == "__main__":
         YoloUltralyticsAdapter(
             **{
                 "img_size": 768,
-                "epochs": 150,
+                "epochs": 111,
                 "weights": "yolo11x.pt",
                 "checkpoint": None,
                 "verbose": True,
@@ -80,7 +80,7 @@ if __name__ == "__main__":
         YoloUltralyticsAdapter(
             **{
                 "img_size": 768,
-                "epochs": 150,
+                "epochs": 111,
                 "weights": "yolo11x.pt",
                 "checkpoint": None,
                 "verbose": True,
