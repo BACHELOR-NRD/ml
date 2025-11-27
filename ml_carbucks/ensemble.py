@@ -23,7 +23,7 @@ from ml_carbucks.optmization.ensemble_objective import (
     create_objective,
     create_ensembling_opt_prestep,
 )
-from ml_carbucks.optmization.simple_study import execute_simple_study
+from ml_carbucks.optmization.execution import execute_simple_study
 from ml_carbucks.utils.DatasetsPathManager import DatasetsPathManager
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.optimization import get_runtime

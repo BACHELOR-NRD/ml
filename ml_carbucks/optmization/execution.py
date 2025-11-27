@@ -1,7 +1,7 @@
 import math
 import json
 from pathlib import Path
-from typing import Callable, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, List, Literal, Optional, Tuple, Union
 
 import optuna
 
@@ -106,7 +106,7 @@ def execute_simple_study(
     study_attributes: Optional[dict] = None,
     n_jobs: int = 1,
     sampler: optuna.samplers.BaseSampler | None = None,
-):
+) -> dict[str, Any]:
 
     if study_attributes is None:
         study_attributes = {}
@@ -225,6 +225,69 @@ def execute_simple_study(
 
     (hyper_dir_path / hyper_name).mkdir(parents=True, exist_ok=True)
     with open(hyper_dir_path / hyper_name / f"results_{study_name}.json", "w") as f:
+        json.dump(hyper_results, f, indent=4)
+
+    return hyper_results
+
+
+def execute_custom_study_trial(
+    study_name: str,
+    results_dir: Path,
+    objective_func: Callable,
+    params: dict,
+    hyper_name: str = "custom_params",
+    hyper_suffix: str = "hyper",
+    metadata: Optional[dict] = None,
+) -> dict[str, Any]:
+
+    if metadata is None:
+        metadata = {}
+    else:
+        # NOTE: it needs to be json serializable so we need to check for it
+        for key, value in metadata.items():
+            if not isinstance(value, (str, int, float, bool, list, dict)):
+                logger.warning(
+                    f"Metadata key '{key}' has non-serializable value: {value}"
+                )
+
+    hyper_dir_path = results_dir / hyper_suffix
+    hyper_dir_path.mkdir(parents=True, exist_ok=True)
+
+    sql_path = results_dir / "studies" / f"{study_name}.db"
+    sql_path.parent.mkdir(parents=True, exist_ok=True)
+
+    study = optuna.create_study(
+        direction="maximize",
+        study_name=f"{hyper_name}_{study_name}",
+        load_if_exists=True,
+        storage=f"sqlite:///{sql_path}",
+    )
+
+    trial = study.ask()
+
+    trial.params.update(params)
+
+    trial.set_user_attr("metadata", metadata)
+
+    score = objective_func(params=params, trial=trial)
+
+    frozen_trial = study.tell(trial, score)
+
+    hyper_results = {
+        **metadata,
+        "trial_number": frozen_trial.number,
+        "params": frozen_trial.params,
+        "value": score,
+        "study_name": study_name,
+        "trial_time_seconds": (
+            frozen_trial.duration.total_seconds() if frozen_trial.duration else 0
+        ),
+    }
+
+    (hyper_dir_path / hyper_name).mkdir(parents=True, exist_ok=True)
+    with open(
+        hyper_dir_path / hyper_name / f"results_custom_trial_{study_name}.json", "w"
+    ) as f:
         json.dump(hyper_results, f, indent=4)
 
     return hyper_results

@@ -81,3 +81,42 @@ def create_objective(
             return -0.1
 
     return objective
+
+
+def custom_objective_func(
+    params: dict,
+    trial: Trial,
+    adapter: BaseDetectionAdapter,
+    train_datasets: list[tuple],
+    val_datasets: list[tuple],
+    results_dir: Path,
+) -> float:
+
+    trial_adapter = adapter.clone()
+    trial_adapter = trial_adapter.set_params(params)
+    try:
+        metrics = trial_adapter.debug(
+            train_datasets=train_datasets,
+            val_datasets=val_datasets,
+            results_path=results_dir / "debug",
+            results_name=f"debug_{adapter.__class__.__name__}_trial_{trial.number}",
+        )
+
+        score = metrics["map_50"]
+
+        logger.info(
+            f"Custom objective completed with score: {score}, params: {params}, metrics: {metrics}"
+        )
+
+        _ = trial_adapter.save(
+            dir=results_dir,
+            prefix=f"custom_pickled_{adapter.__class__.__name__}_",
+            suffix=f"_trial_{trial.number}",
+        )
+    except Exception as e:
+        logger.error(f"Error in custom objective: {e}")
+        trial.set_user_attr("error", str(e))
+        return -0.1
+    finally:
+        del trial_adapter
+    return score

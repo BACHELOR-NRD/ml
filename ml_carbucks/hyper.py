@@ -12,7 +12,7 @@ from ml_carbucks.adapters.UltralyticsAdapter import (  # noqa: F401
 )
 from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter  # noqa: F401
 from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter  # noqa: F401
-from ml_carbucks.optmization.simple_study import execute_simple_study
+from ml_carbucks.optmization.execution import execute_simple_study
 from ml_carbucks.optmization.hyper_objective import create_objective
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks import OPTUNA_DIR
