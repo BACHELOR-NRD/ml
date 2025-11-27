@@ -12,7 +12,7 @@ logger = setup_logger(__name__)
 @dataclass
 class TrialParamWrapper:
     # fmt: off
-    version: Literal["v1", "v2", "v3", "v4", "v5"] = "v1"
+    version: Literal["h1", "h2", "e1", "e2", "e3"]
     ensemble_size: Optional[int] = None
     """A class that is to help the creation of the trial parameters."""
 
@@ -32,18 +32,19 @@ class TrialParamWrapper:
             "momentum": trial.suggest_float("momentum", 0.3, 0.99),
         }
 
-        if self.version not in ("v1", "v2"):
+        if self.version not in ("h1", "h2"):
             raise ValueError(
-                f"YOLO parameters are only available for versions 'v1' and 'v2', got '{self.version}'"
+                f"YOLO parameters are only available for versions 'h1' and 'h2', got '{self.version}'"
             )
 
-        elif self.version == "v1":
+        elif self.version == "h1":
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["yolo11m.pt"]),
                     "img_size": trial.suggest_categorical("img_size", self.V1_IMG_SIZE_OPTIONS),
                     "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
-                    "accumulation_steps": trial.suggest_categorical("accumulation_steps", [1])
+                    "accumulation_steps": trial.suggest_categorical("accumulation_steps", [1]),
+                    "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
         else:
@@ -53,8 +54,10 @@ class TrialParamWrapper:
                     "img_size": trial.suggest_categorical("img_size", self.V2_IMG_SIZE_OPTIONS),
                     "batch_size": trial.suggest_categorical("batch_size", [8]),
                     "accumulation_steps": trial.suggest_categorical("accumulation_steps", [2, 4]),
+                    "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
+
         return params
 
     def _get_rtdetr_params(self, trial: optuna.Trial) -> Dict[str, Any]:
@@ -67,18 +70,19 @@ class TrialParamWrapper:
             "optimizer": trial.suggest_categorical("optimizer", ["Adam", "AdamW"]),
         }
 
-        if self.version not in ("v1", "v2"):
+        if self.version not in ("h1", "h2"):
             raise ValueError(
-                f"RTDETR parameters are only available for versions 'v1' and 'v2', got '{self.version}'"
+                f"RTDETR parameters are only available for versions 'h1' and 'h2', got '{self.version}'"
             )
 
-        elif self.version == "v1":
+        elif self.version == "h1":
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["rtdetr-l.pt"]),
                     "img_size": trial.suggest_categorical("img_size", self.V1_IMG_SIZE_OPTIONS),
                     "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
                     "accumulation_steps": trial.suggest_categorical("accumulation_steps", [1]),
+                    "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
         else:
@@ -88,6 +92,7 @@ class TrialParamWrapper:
                     "img_size": trial.suggest_categorical("img_size", self.V2_IMG_SIZE_OPTIONS),
                     "batch_size": trial.suggest_categorical("batch_size", [8]),
                     "accumulation_steps": trial.suggest_categorical("accumulation_steps", [2, 4]),
+                    "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
         return params
@@ -103,18 +108,19 @@ class TrialParamWrapper:
 
         }
 
-        if self.version not in ("v1", "v2"):
+        if self.version not in ("h1", "h2"):
             raise ValueError(
-                f"FasterRCNN parameters are only available for versions 'v1' and 'v2', got '{self.version}'"
+                f"FasterRCNN parameters are only available for versions 'h1' and 'h2', got '{self.version}'"
             )
 
-        elif self.version == "v1":
+        elif self.version == "h1":
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["V1"]),
                     "img_size": trial.suggest_categorical("img_size", self.V1_IMG_SIZE_OPTIONS),
                     "batch_size": trial.suggest_categorical("batch_size", [8, 16]),
                     "accumulation_steps": trial.suggest_categorical("accumulation_steps", [1]),
+                    "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
         else:
@@ -124,6 +130,7 @@ class TrialParamWrapper:
                     "img_size": trial.suggest_categorical("img_size", self.V2_IMG_SIZE_OPTIONS),
                     "batch_size": trial.suggest_categorical("batch_size", [8]),
                     "accumulation_steps": trial.suggest_categorical("accumulation_steps", [2]),  # NOTE: should also include 4?
+                    "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
 
@@ -139,18 +146,19 @@ class TrialParamWrapper:
             "optimizer": trial.suggest_categorical("optimizer", ["momentum", "adamw"]),
         }
 
-        if self.version not in ("v1", "v2"):
+        if self.version not in ("h1", "h2"):
             raise ValueError(
-                f"EfficientDet parameters are only available for versions 'v1' and 'v2', got '{self.version}'"
+                f"EfficientDet parameters are only available for versions 'h1' and 'h2', got '{self.version}'"
             )
 
-        elif self.version == "v1":
+        elif self.version == "h1":
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["tf_efficientdet_d0"]),
                     "img_size": trial.suggest_categorical("img_size", self.V1_IMG_SIZE_OPTIONS),
                     "batch_size": trial.suggest_categorical("batch_size", [8, 16, 32]),
                     "accumulation_steps": trial.suggest_categorical("accumulation_steps", [1]),
+                    "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
         else:
@@ -160,6 +168,7 @@ class TrialParamWrapper:
                     "img_size": trial.suggest_categorical("img_size", self.V2_IMG_SIZE_OPTIONS),
                     "batch_size": trial.suggest_categorical("batch_size", [4]),
                     "accumulation_steps": trial.suggest_categorical("accumulation_steps", [4, 8]),
+                    "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
 
@@ -167,12 +176,12 @@ class TrialParamWrapper:
 
     def _get_ensemble_model_params(self, trial: optuna.Trial) -> Dict[str, Any]:
 
-        if self.version not in ["v3", "v4", "v5"]:
+        if self.version not in ["e1", "e2", "e3"]:
             raise ValueError(
                 f"Ensemble model parameters are only available for versions 'v3' and 'v4', got '{self.version}'"
             )
 
-        elif self.version == "v3":
+        elif self.version == "e1":
             params = {
                 "fusion_strategy": trial.suggest_categorical("fusion_strategy", ["nms"]),
                 "fusion_conf_threshold": trial.suggest_float("fusion_conf_threshold", 0.05, 0.60),
@@ -181,7 +190,7 @@ class TrialParamWrapper:
                 "fusion_norm_method": trial.suggest_categorical("fusion_norm_method", ["zscore"]),
             }
 
-        elif self.version == "v4":
+        elif self.version == "e2":
 
             params = {
                 "fusion_strategy": trial.suggest_categorical("fusion_strategy", ["wbf"]),
@@ -209,7 +218,7 @@ class TrialParamWrapper:
 
             for i in range(self.ensemble_size):
                 params[f"fusion_trust_factor_{i}"] = trial.suggest_float(f"fusion_trust_factor_{i}", 0.5, 2.0)
-                if self.version in ("v4", "v5"):
+                if self.version == "e2" or (self.version == "e3" and params["fusion_strategy"] == "wbf"):
                     params[f"fusion_exponent_factor_{i}"] = trial.suggest_float(f"fusion_exponent_factor_{i}", 0.5, 2.0)
 
         final_params = self.convert_ensemble_params_to_model_format(

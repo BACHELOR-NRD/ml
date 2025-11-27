@@ -35,7 +35,7 @@ def create_objective(
     adapters_predictions: List[List[ADAPTER_PREDICTION]],
     ground_truths: List[dict],
     distributions: List[ScoreDistribution],
-    param_wrapper_version: Literal["v3", "v4", "v5"],
+    param_wrapper_version: Literal["e1", "e2", "e3"],
 ) -> Callable:
     """
     Ensemble optimization objective function creator.

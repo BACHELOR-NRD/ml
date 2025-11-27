@@ -73,7 +73,7 @@ def main(
     results_dir: Path,
     train_folds: list[ADAPTER_DATASETS],
     val_folds: list[ADAPTER_DATASETS],
-    param_wrapper_version: Literal["v3", "v4", "v5"],
+    param_wrapper_version: Literal["e1", "e2", "e3"],
     final_datasets: ADAPTER_DATASETS | None = None,
     n_trials: int = 25,
     patience: int = -1,
@@ -177,8 +177,8 @@ if __name__ == "__main__":
         results_dir=OPTUNA_DIR,
         n_trials=400,
         patience=75,
-        # NOTE: v4 only allows WBF and v3 only NMS, v5 is combined but also unnecessary exponents for nms
-        param_wrapper_version="v3",
+        # NOTE: e2 only allows WBF and e1 only NMS, e3 is combined but also unnecessary exponents for nms
+        param_wrapper_version="e1",
         min_percentage_improvement=0.01,
         n_jobs=1,
         # NOTE: default n_startup_trials is 10

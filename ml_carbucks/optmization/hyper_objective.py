@@ -17,7 +17,7 @@ def create_objective(
     train_datasets: list[tuple],
     val_datasets: list[tuple],
     results_dir: Path,
-    param_wrapper_version: Literal["v1", "v2"],
+    param_wrapper_version: Literal["h1", "h2"],
     plot_with_debug: bool = False,
 ) -> Callable:
 

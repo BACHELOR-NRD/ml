@@ -34,7 +34,7 @@ def main(
     results_dir: Path,
     train_datasets: list[tuple],
     val_datasets: list[tuple],
-    param_wrapper_version: Literal["v1", "v2"],
+    param_wrapper_version: Literal["h1", "h2"],
     plot_with_debug: bool = False,
     n_trials: int = 25,
     patience: int = -1,
@@ -106,18 +106,20 @@ if __name__ == "__main__":
 
     runtime = get_runtime(title="", override="20251123_223647_heavy_models")
 
+    adapter_list: list[BaseDetectionAdapter] = [
+        YoloUltralyticsAdapter(verbose=True),
+        EfficientDetAdapter(verbose=True),
+        RtdetrUltralyticsAdapter(verbose=True),
+        FasterRcnnAdapter(verbose=True),
+    ]
+
     # NOTE: defult params are setup here
     main(
-        adapter_list=[
-            YoloUltralyticsAdapter(verbose=True),
-            EfficientDetAdapter(verbose=True),
-            RtdetrUltralyticsAdapter(verbose=True),
-            FasterRcnnAdapter(verbose=True),
-        ],
+        adapter_list=adapter_list,
         runtime=runtime,
         train_datasets=DatasetsPathManager.CARBUCKS_TRAIN_STANDARD,
         val_datasets=DatasetsPathManager.CARBUCKS_VAL_STANDARD,
-        param_wrapper_version="v2",  # NOTE: v2 will use bigger image sizes and epochs so it takes longer
+        param_wrapper_version="h2",  # NOTE: h2 will use bigger image sizes and epochs so it takes longer
         plot_with_debug=True,
         results_dir=OPTUNA_DIR,
         n_trials=30,
