@@ -286,7 +286,10 @@ def execute_custom_study_trial(
 
     (hyper_dir_path / hyper_name).mkdir(parents=True, exist_ok=True)
     with open(
-        hyper_dir_path / hyper_name / f"results_custom_trial_{study_name}.json", "w"
+        hyper_dir_path
+        / hyper_name
+        / f"results_custom_{study_name}_trial_{frozen_trial.number}.json",
+        "w",
     ) as f:
         json.dump(hyper_results, f, indent=4)
 
