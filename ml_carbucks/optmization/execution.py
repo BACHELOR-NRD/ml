@@ -263,6 +263,14 @@ def execute_custom_study_trial(
         storage=f"sqlite:///{sql_path}",
     )
 
+    for trial in study.trials:
+        if trial.state != optuna.trial.TrialState.COMPLETE:
+            continue
+        if params_equal(trial.params, params):
+            error_msg = f"Found existing trial {trial.number} for {hyper_name}-{study_name} with same parameters. Aborting custom trial execution."
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
     distributed_params = {}
     dynamic_params = {}
 

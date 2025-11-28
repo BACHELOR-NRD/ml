@@ -54,43 +54,21 @@ def main(
 
 
 if __name__ == "__main__":
+    # NOTE: pending running as of (2025-11-28)
     adapter_list: list[BaseDetectionAdapter] = [
         YoloUltralyticsAdapter(
             **{
                 "img_size": 768,
-                "epochs": 111,
+                "batch_size": 8,
+                "epochs": 36,
                 "weights": "yolo11x.pt",
                 "checkpoint": None,
                 "verbose": True,
                 "optimizer": "Adam",
-                "lr": 0.00022659579786066803,
-                "momentum": 0.8623701824577743,
-                "weight_decay": 1.1148225166043645e-05,
-                "batch_size": 8,
+                "lr": 0.0001419948413204914,
+                "momentum": 0.9346757287744887,
+                "weight_decay": 0.0010688292036922472,
                 "accumulation_steps": 4,
-                "scheduler": None,
-                "seed": 42,
-                "strategy": "nms",
-                "training_save": False,
-                "project_dir": None,
-                "name": None,
-                "training_augmentations": True,
-            }
-        ),
-        YoloUltralyticsAdapter(
-            **{
-                "img_size": 768,
-                "epochs": 111,
-                "weights": "yolo11x.pt",
-                "checkpoint": None,
-                "verbose": True,
-                "optimizer": "Adam",
-                "lr": 0.00022659579786066803,
-                "momentum": 0.8623701824577743,
-                "weight_decay": 1.1148225166043645e-05,
-                "batch_size": 8,
-                "accumulation_steps": 4,
-                "scheduler": "cosine",
                 "seed": 42,
                 "strategy": "nms",
                 "training_save": False,
