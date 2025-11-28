@@ -145,7 +145,7 @@ def create_dataset_custom(
         has_labels=has_labels,
     )
     dataset = DetectionDatset(
-        data_dir=img_dir,  # type: ignore
+        data_dir=Path(img_dir),  # type: ignore
         parser=create_parser("coco", cfg=parser_cfg),
     )
     # NOTE: this is a fix for missing 'info' field in some COCO annotations

@@ -15,14 +15,32 @@ def convert_yolo_to_coco(base_dir, splits):
 
     # Load class names from dataset.yaml
     yaml_file = os.path.join(base_dir, "dataset.yaml")
-    with open(yaml_file, "r") as f:
-        data_yaml = yaml.safe_load(f)
 
-    # "names" can be dict or list in YOLO .yaml
-    if isinstance(data_yaml["names"], dict):
-        names = [data_yaml["names"][k] for k in sorted(data_yaml["names"].keys())]
+    if os.path.exists(yaml_file):
+        with open(yaml_file, "r") as f:
+            data_yaml = yaml.safe_load(f)
+
+        # "names" can be dict or list in YOLO .yaml
+        if isinstance(data_yaml["names"], dict):
+            names = [data_yaml["names"][k] for k in sorted(data_yaml["names"].keys())]
+        else:
+            names = data_yaml["names"]
     else:
-        names = data_yaml["names"]
+        # load thru files in labels directory
+        labels_dir = os.path.join(base_dir, "labels")
+        names = set()
+        for split in splits:
+            split_dir = os.path.join(labels_dir, split)
+            if not os.path.exists(split_dir):
+                continue
+            for label_file in os.listdir(split_dir):
+                if not label_file.lower().endswith(".txt"):
+                    continue
+                with open(os.path.join(split_dir, label_file), "r") as f:
+                    for line in f:
+                        cls_id = int(line.strip().split()[0])
+                        names.add(cls_id)
+        names = [f"class_{i}" for i in sorted(names)]
 
     categories = [{"id": i + 1, "name": name} for i, name in enumerate(names)]
 
