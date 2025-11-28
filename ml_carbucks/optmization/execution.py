@@ -263,20 +263,47 @@ def execute_custom_study_trial(
         storage=f"sqlite:///{sql_path}",
     )
 
-    trial = study.ask()
+    distributed_params = {}
+    dynamic_params = {}
+
+    for key, value in params.items():
+        if (isinstance(value, float) or isinstance(value, int)) and not isinstance(
+            value, bool
+        ):
+            distributed_params[key] = value
+        else:
+            dynamic_params[key] = value
+
+    fixed_distributions = {}
+    for key, value in distributed_params.items():
+        if isinstance(value, int):
+            fixed_distributions[key] = optuna.distributions.IntDistribution(
+                value, value
+            )
+        else:
+            fixed_distributions[key] = optuna.distributions.FloatDistribution(
+                value, value
+            )
+
+    trial = study.ask(fixed_distributions=fixed_distributions)
 
     trial.params.update(params)
 
+    trial.set_user_attr("params", params)
+    trial.set_user_attr("distributed_params", distributed_params)
+    trial.set_user_attr("dynamic_params", dynamic_params)
     trial.set_user_attr("metadata", metadata)
 
-    score = objective_func(params=params, trial=trial)
+    score = objective_func(params=params)
 
     frozen_trial = study.tell(trial, score)
 
     hyper_results = {
         **metadata,
         "trial_number": frozen_trial.number,
-        "params": frozen_trial.params,
+        "distributed_params": frozen_trial.params,
+        "dynamic_params": dynamic_params,
+        "params": params,
         "value": score,
         "study_name": study_name,
         "trial_time_seconds": (
