@@ -276,7 +276,7 @@ class EnsembleFacilitator:
                     {
                         "boxes": pred["boxes"].detach().cpu(),
                         "scores": pred["scores"].detach().cpu(),
-                        "labels": pred["labels"].detach().cpu(),
+                        "labels": pred["labels"].detach().cpu().long(),
                     }
                     for pred in preds
                 )
