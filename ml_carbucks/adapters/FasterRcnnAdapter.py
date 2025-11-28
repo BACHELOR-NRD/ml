@@ -299,7 +299,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             saver.save(
                 epoch=epoch,
                 loss=total_loss,
-                val_map=val_metrics["map_50_95"],
+                val_map_50_95=val_metrics["map_50_95"],
                 val_map_50=val_metrics["map_50"],
             )
             logger.info(
@@ -311,7 +311,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
                 show = True
             elif visualize == "last" and epoch == epochs:
                 show = True
-            saver.plot(show=show, secondaries_y=["val_map", "val_map_50"])
+            saver.plot(show=show, secondaries_y=["val_map_50_95", "val_map_50"])
 
         if val_metrics is None:
             raise RuntimeError("Validation metrics were not computed during debugging.")

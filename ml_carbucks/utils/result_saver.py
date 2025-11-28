@@ -15,12 +15,14 @@ class ResultSaver:
     def __post_init__(self):
         Path(self.path).mkdir(parents=True, exist_ok=True)
 
-    def save(self, epoch: int, loss: float, val_map: float, **kwargs) -> "ResultSaver":
+    def save(
+        self, epoch: int, loss: float, val_map_50_95: float, **kwargs
+    ) -> "ResultSaver":
         self.data.append(
             {
                 "epoch": epoch,
                 "loss": loss,
-                "val_map": val_map,
+                "val_map_50_95": val_map_50_95,
                 **kwargs,
                 **self.metadata,
             }
@@ -33,7 +35,7 @@ class ResultSaver:
 
     def plot(
         self,
-        secondaries_y: list[str] = ["val_map"],
+        secondaries_y: list[str] = ["val_map_50_95"],
         save: bool = True,
         show: bool = True,
     ) -> "ResultSaver":
