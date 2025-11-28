@@ -70,6 +70,7 @@ class BaseDetectionAdapter(ABC):
     device: str = field(init=False)
     model: Any = field(init=False, default=None, repr=False)
     verbose: bool = field(default=False)
+    label_mapper: Optional[Dict[int, int]] = field(default=None)
 
     def __post_init__(self):
         self.device = "cuda" if self._cuda_available() else "cpu"

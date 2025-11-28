@@ -1,3 +1,4 @@
+from copy import deepcopy
 import torch
 from torch import Tensor
 from torchvision.ops import nms
@@ -284,3 +285,28 @@ def weighted_boxes_fusion(
         "scores": fused_scores.detach().cpu(),
         "labels": fused_labels.detach().cpu().long(),
     }
+
+
+def map_predictions_labels(
+    predictions: list[ADAPTER_PREDICTION], label_mapper: dict[int, int]
+) -> list[ADAPTER_PREDICTION]:
+    """
+    Map prediction labels using a provided label mapping dictionary.
+
+    Args:
+        predictions (ADAPTER_PREDICTION): The original predictions with labels to be mapped.
+        label_mapper (dict[int, int]): A dictionary mapping original labels to new labels.
+
+    Returns:
+        ADAPTER_PREDICTION: Predictions with mapped labels.
+    """
+
+    mapped_predictions = deepcopy(predictions)
+    for pred in mapped_predictions:
+        mapped_labels = []
+        for label in pred["labels"]:
+            mapped_label = label_mapper.get(int(label.item()), int(label.item()))
+            mapped_labels.append(mapped_label)
+        pred["labels"] = torch.tensor(mapped_labels, dtype=torch.long)
+
+    return mapped_predictions

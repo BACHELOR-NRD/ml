@@ -27,6 +27,7 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.postprocessing import (
     convert_pred2eval,
+    map_predictions_labels,
     postprocess_prediction_nms,
     weighted_boxes_fusion,
     postprocess_evaluation_results,
@@ -266,6 +267,12 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
                 raise ValueError(f"Unsupported strategy: {self.strategy}")
 
             processed_predictions.append(prediction)
+
+        if self.label_mapper is not None:
+            mapped_predictions = map_predictions_labels(
+                processed_predictions, label_mapper=self.label_mapper
+            )
+            return mapped_predictions
 
         return processed_predictions
 

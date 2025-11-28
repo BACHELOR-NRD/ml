@@ -18,6 +18,7 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
 )
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.postprocessing import (
+    map_predictions_labels,
     postprocess_prediction_nms,
     weighted_boxes_fusion,
 )
@@ -369,6 +370,12 @@ class YoloUltralyticsAdapter(UltralyticsAdapter):
 
             all_detections.append(prediction)
 
+        if self.label_mapper is not None:
+            mapped_detections = map_predictions_labels(
+                all_detections, label_mapper=self.label_mapper
+            )
+            return mapped_detections
+
         return all_detections
 
 
@@ -444,5 +451,11 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
                 raise ValueError(f"Unsupported strategy: {self.strategy}")
 
             all_detections.append(prediction)
+
+        if self.label_mapper is not None:
+            mapped_detections = map_predictions_labels(
+                all_detections, label_mapper=self.label_mapper
+            )
+            return mapped_detections
 
         return all_detections

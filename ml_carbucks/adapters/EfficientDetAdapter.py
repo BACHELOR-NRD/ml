@@ -20,6 +20,7 @@ from timm.scheduler.scheduler import Scheduler
 
 from ml_carbucks.utils.postprocessing import (
     convert_pred2eval,
+    map_predictions_labels,
     postprocess_prediction_nms,
     postprocess_evaluation_results,
     weighted_boxes_fusion,
@@ -328,6 +329,12 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                     )
 
                 predictions.append(prediction)
+
+        if self.label_mapper is not None:
+            mapped_predictions = map_predictions_labels(
+                predictions, label_mapper=self.label_mapper
+            )
+            return mapped_predictions
 
         return predictions
 
