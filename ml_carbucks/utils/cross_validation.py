@@ -1,3 +1,4 @@
+from ml_carbucks.utils.DatasetsPathManager import DatasetsPathManager
 from ml_carbucks.utils.logger import setup_logger
 from pathlib import Path
 import json
@@ -5,16 +6,42 @@ from collections import defaultdict
 import numpy as np
 import shutil
 from iterstrat.ml_stratifiers import MultilabelStratifiedKFold
+
 from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter
 from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter
 from ml_carbucks.adapters.UltralyticsAdapter import (
     YoloUltralyticsAdapter,
     RtdetrUltralyticsAdapter,
 )
-from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
+from ml_carbucks.adapters.BaseDetectionAdapter import (
+    BaseDetectionAdapter,
+    ADAPTER_DATASETS,
+    ADAPTER_METRICS,
+)
 
 
 dataset_base = Path("/home/bachelor/ml-carbucks/data/carbucks_crossval_folds")
+
+
+def cross_validate(
+    adapter: BaseDetectionAdapter,
+    train_folds: list[ADAPTER_DATASETS] = DatasetsPathManager.CARBUCKS_TRAIN_CV,
+    val_folds: list[ADAPTER_DATASETS] = DatasetsPathManager.CARBUCKS_VAL_CV,
+) -> list[ADAPTER_METRICS]:
+
+    fold_metrics: list[ADAPTER_METRICS] = []
+
+    for fold_idx, (train_data, val_data) in enumerate(
+        zip(train_folds, val_folds, strict=True)
+    ):
+        model = adapter.clone()
+
+        model.fit(train_data)
+
+        metrics = model.evaluate(val_data)
+        fold_metrics.append(metrics)
+
+    return fold_metrics
 
 
 def stratified_cross_valitation(
@@ -33,7 +60,7 @@ def stratified_cross_valitation(
         cv_folds: Number of cross-validation folds.
         setup_ensemble: Optional callable to set up an ensemble model.
         ensemble_args: Optional dictionary of arguments for the ensemble setup.
-        """
+    """
 
     logger = setup_logger(__name__)
     logger.info("Starting stratified cross-validation")
@@ -61,7 +88,14 @@ def stratified_cross_valitation(
         logger.info(f"validation dataset: {val_dataset}")
 
         adapter_class = get_adapter_class(hyper_results["adapter"])
-        result = model_training(adapter_class, best_params, train_dataset, val_dataset, setup_ensemble, ensemble_args)
+        result = model_training(
+            adapter_class,
+            best_params,
+            train_dataset,
+            val_dataset,
+            setup_ensemble,
+            ensemble_args,
+        )
         fold_results.append(result)
 
     logger.info("Cross-validation complete. Compiling summary statistics.")
@@ -93,7 +127,7 @@ def model_training(
 ) -> dict:
 
     if setup_ensemble:
-         return setup_ensemble(train_dataset,val_dataset,best_params,ensemble_args)
+        return setup_ensemble(train_dataset, val_dataset, best_params, ensemble_args)
     else:
         model: BaseDetectionAdapter = adapter_class(**best_params)
         model.fit(train_dataset)
