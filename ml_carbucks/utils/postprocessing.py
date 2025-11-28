@@ -25,6 +25,24 @@ def postprocess_prediction_nms(
     iou_threshold: float,
     max_detections: int,
 ) -> ADAPTER_PREDICTION:
+    """A function that applies Non-Maximum Suppression (NMS) to model predictions.
+
+
+    Args:
+        boxes (Tensor): A tensor of shape (N, 4) representing bounding box coordinates.
+        scores (Tensor): A tensor of shape (N,) representing confidence scores for each bounding box.
+        labels (Tensor): A tensor of shape (N,) representing class labels for each bounding box.
+        conf_threshold (float): Confidence threshold to filter out low-confidence boxes.
+        iou_threshold (float): Intersection-over-Union (IoU) threshold for NMS.
+        max_detections (int): Maximum number of detections to keep after NMS.
+
+    Raises:
+        ValueError: If max_detections is not an integer or None.
+
+    Returns:
+        ADAPTER_PREDICTION: A dictionary containing the post-processed predictions with keys "boxes", "scores", and "labels".
+            It is detached, cloned, and on CPU.
+    """
 
     device = boxes.device
     boxes = boxes.to(device)
@@ -163,7 +181,7 @@ def weighted_boxes_fusion(
         max_detections (int): Max number of output boxes.
 
     Returns:
-        ADAPTER_PREDICTION: fused boxes, scores, and labels.
+        ADAPTER_PREDICTION: fused boxes, scores, and labels. It is detached, cloned, and on CPU.
     """
 
     # Filter by confidence
@@ -262,7 +280,7 @@ def weighted_boxes_fusion(
     fused_labels = fused_labels[order][:max_detections]
 
     return {
-        "boxes": fused_boxes,
-        "scores": fused_scores,
-        "labels": fused_labels,
+        "boxes": fused_boxes.detach().cpu(),
+        "scores": fused_scores.detach().cpu(),
+        "labels": fused_labels.detach().cpu().long(),
     }
