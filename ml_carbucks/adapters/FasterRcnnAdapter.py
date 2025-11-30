@@ -15,7 +15,6 @@ from torchvision.models.detection.faster_rcnn import (
     FasterRCNN_ResNet50_FPN_Weights,
     FasterRCNN_ResNet50_FPN_V2_Weights,
 )
-from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from timm.scheduler.scheduler import Scheduler
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
@@ -27,7 +26,9 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.postprocessing import (
     convert_pred2eval,
+    create_evaluator,
     map_predictions_labels,
+    plot_pr_curves_with_ap50,
     postprocess_prediction_nms,
     weighted_boxes_fusion,
     postprocess_evaluation_results,
@@ -171,7 +172,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         loader = self._create_loader(datasets, is_training=False)
 
-        evaluator = MeanAveragePrecision(extended_summary=False, class_metrics=False)
+        evaluator = create_evaluator()
         with torch.no_grad():
             for imgs, targets in tqdm(
                 loader, desc="Evaluating", unit="batch", disable=not self.verbose
@@ -322,6 +323,12 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
 
         if val_metrics is None:
             raise RuntimeError("Validation metrics were not computed during debugging.")
+
+        plot_pr_curves_with_ap50(
+            val_metrics,
+            save=Path(results_path) / f"{results_name}_pr_curves.png",
+            show=visualize != "none",
+        )
         return val_metrics
 
     def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:

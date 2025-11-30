@@ -41,7 +41,9 @@ class ADAPTER_METRICS(TypedDict, total=False):
     map_50: Required[float]
     map_75: Required[float]
     map_50_95: Required[float]
-    classes: Required[List[int]]
+    classes: Required[List[int] | None]
+    precision: Required[torch.Tensor | None]
+    map_per_class: Required[list | None]
 
 
 class ADAPTER_CHECKPOINT(TypedDict):

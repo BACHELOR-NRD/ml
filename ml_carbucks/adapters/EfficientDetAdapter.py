@@ -9,7 +9,6 @@ import pickle as pkl
 from tqdm import tqdm
 from PIL import Image
 from torch.utils.data.dataloader import DataLoader
-from torchmetrics.detection.mean_ap import MeanAveragePrecision
 from effdet import create_model, create_loader
 from effdet.data.loader import PrefetchLoader
 from effdet.data import resolve_input_config, resolve_fill_color
@@ -20,7 +19,9 @@ from timm.scheduler.scheduler import Scheduler
 
 from ml_carbucks.utils.postprocessing import (
     convert_pred2eval,
+    create_evaluator,
     map_predictions_labels,
+    plot_pr_curves_with_ap50,
     postprocess_prediction_nms,
     postprocess_evaluation_results,
     weighted_boxes_fusion,
@@ -178,7 +179,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
         if include_default:
             default_evaluator = CocoStatsEvaluator(dataset=val_loader.dataset)
 
-        evaluator = MeanAveragePrecision(extended_summary=False, class_metrics=False)
+        evaluator = create_evaluator()
         total_loss = 0.0
 
         with torch.no_grad():
@@ -393,6 +394,12 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         if val_metrics is None:
             raise RuntimeError("Validation metrics were not computed during debugging.")
+
+        plot_pr_curves_with_ap50(
+            val_metrics,
+            save=Path(results_path) / f"{results_name}_pr_curves.png",
+            show=visualize != "none",
+        )
         return val_metrics
 
     def save(self, dir: Path | str, prefix: str = "", suffix: str = "") -> Path:

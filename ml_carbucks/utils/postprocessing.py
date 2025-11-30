@@ -1,12 +1,97 @@
 from copy import deepcopy
+from pathlib import Path
+from matplotlib import pyplot as plt
 import torch
 from torch import Tensor
 from torchvision.ops import nms
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_PREDICTION,
     ADAPTER_METRICS,
 )
+from ml_carbucks.utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
+
+def plot_pr_curves_with_ap50(
+    results: ADAPTER_METRICS, save: str | Path | None = None, show: bool = True
+):
+    precision = results["precision"]  # [IoU, recall_points, classes, area, max_det]
+    if precision is None:
+        logger.warning(
+            "Precision data is not available in results; cannot plot PR curves."
+        )
+        return
+
+    precision = precision.clone().detach().cpu()
+
+    num_iou, num_recalls, num_classes, num_area, num_maxdets = precision.shape
+    recall_axis = torch.linspace(0, 1, num_recalls)
+
+    # Check if AP@50 is available
+    if "map_50_per_class" in results:
+        ap50_per_class = results["map_50_per_class"]
+    else:
+        logger.warning(
+            "AP@50 per class not found in results; using map_per_class as fallback. Make sure evaluator uses IoU=[0.5] to get correct AP@50 values."
+        )
+        # fallback: use map_per_class (averaged over IoUs)
+        ap50_per_class = results["map_per_class"]
+
+    if ap50_per_class is None:
+        logger.warning(
+            "AP@50 per class data is not available in results; cannot plot PR curves."
+        )
+        return
+
+    if isinstance(ap50_per_class, torch.Tensor):
+        ap50_per_class = ap50_per_class.detach().cpu().numpy()
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    for c in range(num_classes):
+        p = precision[:, :, c, :, :]  # [IoU, rec, area, max_det]
+
+        # Mask invalid bins (<0)
+        p = torch.where(p < 0, torch.nan, p)
+
+        # Average over IoUs, area ranges, max_dets, ignoring NaNs
+        p_mean = torch.nanmean(p, dim=(0, 2, 3)).detach().cpu()
+
+        # Append AP@50 to label
+        label = f"{c} (AP@50={ap50_per_class[c]:.3f})"
+        ax.plot(recall_axis, p_mean, label=label)
+
+    ax.set_xlabel("Recall (normalized index)")
+    ax.set_ylabel("Precision")
+    ax.set_title("Per-Class Precision Curves (Averaged, invalid bins ignored)")
+    ax.legend()
+    ax.grid(True)
+    if save is not None:
+        plt.savefig(save)
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
+
+def create_evaluator(
+    box_pr_iou_thresholds: list[float] | None = [0.5],
+) -> MeanAveragePrecision:
+    """Create a Mean Average Precision evaluator with specified IoU thresholds.
+    Args:
+        box_pr_iou_thresholds (list[float] | None): List of IoU thresholds for evaluation.
+            This defines how will the precision-recall curve be computed.
+            If None, default thresholds from torchmetrics will be used. (0.5:0.95 with step 0.05)
+            In our case, we typically use [0.5] for COCO-style evaluation.
+    """
+
+    evaluator = MeanAveragePrecision(
+        class_metrics=True, extended_summary=True, iou_thresholds=box_pr_iou_thresholds
+    )
+    return evaluator
 
 
 def convert_pred2eval(pred: ADAPTER_PREDICTION) -> ADAPTER_PREDICTION:
@@ -129,7 +214,9 @@ def postprocess_prediction_nms(
     return {"boxes": final_boxes, "scores": final_scores, "labels": final_labels}
 
 
-def postprocess_evaluation_results(metrics: dict[str, Tensor]) -> ADAPTER_METRICS:
+def postprocess_evaluation_results(
+    metrics: dict[str, Tensor],
+) -> ADAPTER_METRICS:
     """
     Process evaluation results from Mean Average Precision metric.
     This was created to unify the output format from
@@ -144,7 +231,15 @@ def postprocess_evaluation_results(metrics: dict[str, Tensor]) -> ADAPTER_METRIC
         "map_50": metrics["map_50"].item(),
         "map_50_95": metrics["map"].item(),
         "map_75": metrics["map_75"].item(),
-        "classes": metrics["classes"].tolist() if "classes" in metrics else [],
+        "classes": metrics["classes"].tolist() if "classes" in metrics else None,
+        "precision": (
+            metrics["precision"].clone().detach().cpu()
+            if "precision" in metrics
+            else None
+        ),
+        "map_per_class": (
+            metrics["map_per_class"].tolist() if "map_per_class" in metrics else None
+        ),
     }
 
 
