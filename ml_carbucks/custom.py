@@ -64,7 +64,7 @@ if __name__ == "__main__":
     adapter_list: list[BaseDetectionAdapter] = [
         YoloUltralyticsAdapter(
             **{
-                "img_size": 1024,
+                "img_size": 768,
                 "batch_size": 8,
                 "accumulation_steps": 8,
                 "epochs": 55,
@@ -85,7 +85,7 @@ if __name__ == "__main__":
         ),
         FasterRcnnAdapter(
             **{
-                "img_size": 1024,
+                "img_size": 768,
                 "epochs": 55,
                 "batch_size": 8,
                 "accumulation_steps": 4,
@@ -105,7 +105,7 @@ if __name__ == "__main__":
         ),
         RtdetrUltralyticsAdapter(
             **{
-                "img_size": 1024,
+                "img_size": 768,
                 "batch_size": 8,
                 "accumulation_steps": 8,
                 "epochs": 55,
@@ -126,9 +126,9 @@ if __name__ == "__main__":
         ),
         EfficientDetAdapter(
             **{
-                "img_size": 1024,
+                "img_size": 768,
                 "epochs": 55,
-                "batch_size": 2,
+                "batch_size": 4,
                 "accumulation_steps": 8,
                 "weights": "tf_efficientdet_d3",
                 "checkpoint": None,
