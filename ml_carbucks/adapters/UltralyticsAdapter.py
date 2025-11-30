@@ -152,7 +152,9 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             "map_50": results.results_dict["metrics/mAP50(B)"],
             "map_50_95": results.results_dict["metrics/mAP50-95(B)"],
             "map_75": -np.inf,  # FIXME: verify that the key is correct: results.results_dict["metrics/mAP75(B)"]
-            "classes": [],  # FIXME: needs to be added
+            "classes": None,  # FIXME: needs to be added
+            "precision": None,
+            "map_per_class": None,
         }
 
         return metrics
@@ -231,7 +233,9 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             "map_50": results.results_dict["metrics/mAP50(B)"],
             "map_50_95": results.results_dict["metrics/mAP50-95(B)"],
             "map_75": -np.inf,  # FIXME: no metric is produced for mAP75?
-            "classes": [],  # FIXME: needs to be added
+            "classes": None,  # FIXME: needs to be added
+            "precision": None,
+            "map_per_class": None,
         }
 
         return metrics

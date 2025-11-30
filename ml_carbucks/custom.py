@@ -67,7 +67,7 @@ if __name__ == "__main__":
                 "img_size": 1024,
                 "batch_size": 8,
                 "accumulation_steps": 8,
-                "epochs": 80,
+                "epochs": 55,
                 "weights": "yolo11x.pt",
                 "checkpoint": None,
                 "verbose": True,
@@ -86,7 +86,7 @@ if __name__ == "__main__":
         FasterRcnnAdapter(
             **{
                 "img_size": 1024,
-                "epochs": 60,
+                "epochs": 55,
                 "batch_size": 8,
                 "accumulation_steps": 4,
                 "weights": "V2",
@@ -108,7 +108,7 @@ if __name__ == "__main__":
                 "img_size": 1024,
                 "batch_size": 8,
                 "accumulation_steps": 8,
-                "epochs": 60,
+                "epochs": 55,
                 "weights": "rtdetr-x.pt",
                 "checkpoint": None,
                 "verbose": True,
@@ -127,9 +127,9 @@ if __name__ == "__main__":
         EfficientDetAdapter(
             **{
                 "img_size": 1024,
-                "epochs": 70,
-                "batch_size": 4,
-                "accumulation_steps": 4,
+                "epochs": 55,
+                "batch_size": 2,
+                "accumulation_steps": 8,
                 "weights": "tf_efficientdet_d3",
                 "checkpoint": None,
                 "verbose": True,

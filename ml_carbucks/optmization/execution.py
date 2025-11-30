@@ -302,7 +302,7 @@ def execute_custom_study_trial(
     trial.set_user_attr("dynamic_params", dynamic_params)
     trial.set_user_attr("metadata", metadata)
 
-    score = objective_func(params=params)
+    score = objective_func(params=params, trial=trial)
 
     frozen_trial = study.tell(trial, score)
 
