@@ -1,7 +1,13 @@
 from functools import partial
 from ml_carbucks import OPTUNA_DIR
-from ml_carbucks.adapters.BaseDetectionAdapter import BaseDetectionAdapter
-from ml_carbucks.adapters.UltralyticsAdapter import YoloUltralyticsAdapter
+from ml_carbucks.adapters import (  # noqa: F401
+    BaseDetectionAdapter,
+    YoloUltralyticsAdapter,
+    FasterRcnnAdapter,
+    EfficientDetAdapter,
+    RtdetrUltralyticsAdapter,
+)
+
 from ml_carbucks.optmization.execution import execute_custom_study_trial
 from ml_carbucks.optmization.hyper_objective import custom_objective_func
 from ml_carbucks.utils.DatasetsPathManager import DatasetsPathManager
@@ -54,13 +60,14 @@ def main(
 
 
 if __name__ == "__main__":
-    # NOTE: pending running as of (2025-11-28)
+    # NOTE: pending running as of (2025-11-30)
     adapter_list: list[BaseDetectionAdapter] = [
         YoloUltralyticsAdapter(
             **{
-                "img_size": 768,
+                "img_size": 1024,
                 "batch_size": 8,
-                "epochs": 36,
+                "accumulation_steps": 8,
+                "epochs": 80,
                 "weights": "yolo11x.pt",
                 "checkpoint": None,
                 "verbose": True,
@@ -68,13 +75,72 @@ if __name__ == "__main__":
                 "lr": 0.0001419948413204914,
                 "momentum": 0.9346757287744887,
                 "weight_decay": 0.0010688292036922472,
-                "accumulation_steps": 4,
                 "seed": 42,
                 "strategy": "nms",
                 "training_save": False,
                 "project_dir": None,
                 "name": None,
                 "training_augmentations": True,
+            }
+        ),
+        FasterRcnnAdapter(
+            **{
+                "img_size": 1024,
+                "epochs": 60,
+                "batch_size": 8,
+                "accumulation_steps": 4,
+                "weights": "V2",
+                "checkpoint": None,
+                "verbose": True,
+                "lr_head": 0.0002629384656431124,
+                "weight_decay_head": 3.396978549701866e-05,
+                "optimizer": "AdamW",
+                "clip_gradients": None,
+                "momentum": 0.9,
+                "strategy": "nms",
+                "scheduler": None,
+                "n_classes": 3,
+                "training_augmentations": True,
+            },
+        ),
+        RtdetrUltralyticsAdapter(
+            **{
+                "img_size": 1024,
+                "batch_size": 8,
+                "accumulation_steps": 8,
+                "epochs": 60,
+                "weights": "rtdetr-x.pt",
+                "checkpoint": None,
+                "verbose": True,
+                "optimizer": "AdamW",
+                "lr": 0.0003525706451014214,
+                "momentum": 0.3848287231051003,
+                "weight_decay": 0.007029213707652018,
+                "seed": 42,
+                "strategy": "nms",
+                "training_save": False,
+                "project_dir": None,
+                "name": None,
+                "training_augmentations": True,
+            },
+        ),
+        EfficientDetAdapter(
+            **{
+                "img_size": 1024,
+                "epochs": 70,
+                "batch_size": 4,
+                "accumulation_steps": 4,
+                "weights": "tf_efficientdet_d3",
+                "checkpoint": None,
+                "verbose": True,
+                "optimizer": "momentum",
+                "lr": 0.008,
+                "weight_decay": 9e-06,
+                "loader": "inbuilt",
+                "strategy": "nms",
+                "scheduler": None,
+                "training_augmentations": True,
+                "n_classes": 3,
             }
         ),
     ]
