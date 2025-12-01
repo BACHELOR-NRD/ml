@@ -207,7 +207,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
                 }
             )
 
-        results = self.model.train(  # type: ignore
+        tres = self.model.train(  # type: ignore # noqa F841
             # --- Core parameters ---
             data=data_yaml,
             seed=self.seed,
@@ -227,6 +227,14 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             nbs=self.batch_size * self.accumulation_steps,
             cos_lr=self.scheduler == "cosine",
             **extra_params,
+        )
+
+        results = self.model.val(
+            data=data_yaml,
+            imgsz=self.img_size,
+            verbose=self.verbose,
+            project=results_path,
+            name=f"{results_name}_val",
         )
 
         metrics: ADAPTER_METRICS = {
