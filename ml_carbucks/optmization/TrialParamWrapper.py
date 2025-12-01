@@ -217,9 +217,9 @@ class TrialParamWrapper:
         else:
 
             for i in range(self.ensemble_size):
-                params[f"fusion_trust_factor_{i}"] = trial.suggest_float(f"fusion_trust_factor_{i}", 0.75, 3.0)
+                params[f"fusion_trust_factor_{i}"] = trial.suggest_float(f"fusion_trust_factor_{i}", 0.8, 1.0)
                 if self.version == "e2" or (self.version == "e3" and params["fusion_strategy"] == "wbf"):
-                    params[f"fusion_exponent_factor_{i}"] = trial.suggest_float(f"fusion_exponent_factor_{i}", 0.75, 3.0)
+                    params[f"fusion_exponent_factor_{i}"] = trial.suggest_float(f"fusion_exponent_factor_{i}", 0.8, 1.2)
 
         final_params = self.convert_ensemble_params_to_model_format(
             params, ensemble_size=self.ensemble_size

@@ -146,7 +146,7 @@ def scale_scores_with_trust(
     """
 
     scaled = []
-    for preds, t in zip(preds_list, trust):
+    for preds, t in zip(preds_list, trust, strict=True):
         scaled.append(
             [
                 (
@@ -176,7 +176,7 @@ def scale_scores_with_exponents(
         )
 
     scaled = []
-    for preds, exp in zip(preds_list, exponents):
+    for preds, exp in zip(preds_list, exponents, strict=True):
         if exp == 1.0:
             # Fast path — no change
             scaled.append([p.clone() for p in preds])
@@ -223,8 +223,9 @@ def fuse_adapters_predictions(
         trust_weights: Optional per-adapter multipliers applied during normalization.
     """
 
+    # NOTE: setup
     num_images = len(adapters_predictions[0])
-    list_of_tensors_per_adapter_org = []
+    list_of_tensors_per_adapter_org: list[list[torch.Tensor]] = []
     for preds_per_adapter in adapters_predictions:
         per_adapter_tensors: list[torch.Tensor] = []
         for p in preds_per_adapter:
@@ -239,6 +240,7 @@ def fuse_adapters_predictions(
             per_adapter_tensors.append(tensor)
         list_of_tensors_per_adapter_org.append(per_adapter_tensors)
 
+    # NOTE: normalization
     tensors_for_fusion = list_of_tensors_per_adapter_org
     if score_normalization_method is not None:
         tensors_for_fusion = normalize_scores(
@@ -247,18 +249,12 @@ def fuse_adapters_predictions(
             distributions=distributions,
         )
 
+    # NOTE: trust factors
     if trust_factors is not None:
-        if len(trust_factors) != len(tensors_for_fusion):
-            raise ValueError(
-                f"trust_factors length {len(trust_factors)}!= num adapters {len(tensors_for_fusion)}"
-            )
         tensors_for_fusion = scale_scores_with_trust(tensors_for_fusion, trust_factors)
 
+    # NOTE: exponent factors
     if exponent_factors is not None:
-        if len(exponent_factors) != len(tensors_for_fusion):
-            raise ValueError(
-                f"exponent_factors length {len(exponent_factors)}!= num adapters {len(tensors_for_fusion)}"
-            )
         tensors_for_fusion = scale_scores_with_exponents(
             tensors_for_fusion, exponent_factors
         )
@@ -280,6 +276,7 @@ def fuse_adapters_predictions(
 
         combined_list_of_tensors.append(combined)
 
+    # NOTE: fusion strategy
     strategy_predictions = []
     if strategy == "nms":
         for combined_preds in combined_list_of_tensors:

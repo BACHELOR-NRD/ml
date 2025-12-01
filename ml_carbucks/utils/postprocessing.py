@@ -261,9 +261,9 @@ def weighted_boxes_fusion(
     boxes: torch.Tensor,
     scores: torch.Tensor,
     labels: torch.Tensor,
-    iou_threshold: float = 0.55,
-    conf_threshold: float = 0.001,
-    max_detections: int = 300,
+    iou_threshold: float,
+    conf_threshold: float,
+    max_detections: int,
 ) -> ADAPTER_PREDICTION:
     """
     Perform Weighted Boxes Fusion (WBF) on a single image's predictions.
