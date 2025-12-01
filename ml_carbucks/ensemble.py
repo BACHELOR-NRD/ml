@@ -1,4 +1,3 @@
-import datetime as dt  # noqa: F401
 from pathlib import Path
 from functools import partial
 from typing import List, Literal, Type
@@ -6,7 +5,7 @@ from typing import List, Literal, Type
 import optuna
 import pandas as pd
 
-from ml_carbucks import OPTUNA_DIR, PRODUCTS_DIR
+from ml_carbucks import OPTUNA_DIR, PRODUCTS_DIR  # noqa: F401
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_DATASETS,
     BaseDetectionAdapter,
@@ -158,29 +157,28 @@ def main(
 if __name__ == "__main__":
 
     runtime = get_runtime(
-        title="demo_combined_explorative",
-        override="20251201_114723_demo_combined_explorative",
+        title="finalizing",
     )
 
-    # adapters = load_adapters_from_hyperopt(
-    #     runtime, load_pattern="best_pickled_*_model.pkl"
-    # )
+    adapters = load_adapters_from_hyperopt(
+        runtime, load_pattern="best_pickled_*_model.pkl"
+    )
 
     # NOTE: manual override for debugging
-    adapters = [
-        YoloUltralyticsAdapter(
-            checkpoint=PRODUCTS_DIR / "best_pickled_YoloUltralyticsAdapter_model.pkl"
-        ),
-        RtdetrUltralyticsAdapter(
-            checkpoint=PRODUCTS_DIR / "best_pickled_RtdetrUltralyticsAdapter_model.pkl"
-        ),
-        FasterRcnnAdapter(
-            checkpoint=PRODUCTS_DIR / "best_pickled_FasterRcnnAdapter_model.pkl"
-        ),
-        EfficientDetAdapter(
-            checkpoint=PRODUCTS_DIR / "best_pickled_EfficientDetAdapter_model.pkl"
-        ),
-    ]
+    # adapters = [
+    #     YoloUltralyticsAdapter(
+    #         checkpoint=PRODUCTS_DIR / "best_pickled_YoloUltralyticsAdapter_model.pkl"
+    #     ),
+    #     RtdetrUltralyticsAdapter(
+    #         checkpoint=PRODUCTS_DIR / "best_pickled_RtdetrUltralyticsAdapter_model.pkl"
+    #     ),
+    #     FasterRcnnAdapter(
+    #         checkpoint=PRODUCTS_DIR / "best_pickled_FasterRcnnAdapter_model.pkl"
+    #     ),
+    #     EfficientDetAdapter(
+    #         checkpoint=PRODUCTS_DIR / "best_pickled_EfficientDetAdapter_model.pkl"
+    #     ),
+    # ]
 
     main(
         adapters=adapters,
@@ -195,9 +193,9 @@ if __name__ == "__main__":
         # NOTE: default n_startup_trials is 10
         sampler=optuna.samplers.TPESampler(n_startup_trials=60),
         # NOTE: this should be folds not standard datasets, current setup is only for quick debugging
-        train_folds=[DatasetsPathManager.CARBUCKS_TRAIN_STANDARD],
-        val_folds=[DatasetsPathManager.CARBUCKS_VAL_STANDARD],
+        train_folds=DatasetsPathManager.CARBUCKS_TRAIN_CV[:2],
+        val_folds=DatasetsPathManager.CARBUCKS_VAL_CV[:2],
         final_datasets=DatasetsPathManager.CARBUCKS_TRAIN_ALL,
         # NOTE: skip trainings for quick debugging only
-        skip_trainings=True,
+        skip_trainings=False,
     )
