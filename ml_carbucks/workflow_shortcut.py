@@ -17,7 +17,7 @@ if __name__ == "__main__":
     adapter_list: list[BaseDetectionAdapter] = [
         YoloUltralyticsAdapter(
             **{
-                "img_size": 768,
+                "img_size": 1024,
                 "epochs": 40,
                 "weights": "yolo11x.pt",
                 "checkpoint": None,
@@ -27,8 +27,31 @@ if __name__ == "__main__":
                 "lr": 0.0001219948413204914,
                 "momentum": 0.9346757287744887,
                 "weight_decay": 0.0010688292036922472,
-                "batch_size": 8,
-                "accumulation_steps": 8,
+                "batch_size": 4,
+                "accumulation_steps": 16,
+                "scheduler": None,
+                "seed": 42,
+                "strategy": "nms",
+                "training_save": False,
+                "project_dir": None,
+                "name": None,
+                "training_augmentations": True,
+            }
+        ),
+        RtdetrUltralyticsAdapter(
+            **{
+                "img_size": 1024,
+                "epochs": 40,
+                "weights": "rtdetr-x.pt",
+                "checkpoint": None,
+                "verbose": True,
+                "label_mapper": None,
+                "optimizer": "AdamW",
+                "lr": 0.0003025706451014214,
+                "momentum": 0.3848287231051003,
+                "weight_decay": 0.007029213707652018,
+                "batch_size": 4,
+                "accumulation_steps": 16,
                 "scheduler": None,
                 "seed": 42,
                 "strategy": "nms",
@@ -40,7 +63,7 @@ if __name__ == "__main__":
         ),
         FasterRcnnAdapter(
             **{
-                "img_size": 768,
+                "img_size": 1024,
                 "epochs": 20,
                 "weights": "V2",
                 "checkpoint": None,
@@ -59,32 +82,9 @@ if __name__ == "__main__":
                 "training_augmentations": True,
             }
         ),
-        RtdetrUltralyticsAdapter(
-            **{
-                "img_size": 768,
-                "epochs": 40,
-                "weights": "rtdetr-x.pt",
-                "checkpoint": None,
-                "verbose": True,
-                "label_mapper": None,
-                "optimizer": "AdamW",
-                "lr": 0.0003025706451014214,
-                "momentum": 0.3848287231051003,
-                "weight_decay": 0.007029213707652018,
-                "batch_size": 8,
-                "accumulation_steps": 4,
-                "scheduler": None,
-                "seed": 42,
-                "strategy": "nms",
-                "training_save": False,
-                "project_dir": None,
-                "name": None,
-                "training_augmentations": True,
-            }
-        ),
         EfficientDetAdapter(
             **{
-                "img_size": 768,
+                "img_size": 1024,
                 "epochs": 20,
                 "weights": "tf_efficientdet_d3",
                 "checkpoint": None,
@@ -122,8 +122,8 @@ if __name__ == "__main__":
         param_wrapper_version="e3",
         min_percentage_improvement=0.01,
         sampler=optuna.samplers.TPESampler(n_startup_trials=60),
-        train_folds=DatasetsPathManager.CARBUCKS_TRAIN_CV,
-        val_folds=DatasetsPathManager.CARBUCKS_VAL_CV,
+        train_folds=DatasetsPathManager.CARBUCKS_TRAIN_CV[:2],
+        val_folds=DatasetsPathManager.CARBUCKS_VAL_CV[:2],
         final_datasets=DatasetsPathManager.CARBUCKS_TRAIN_ALL,
         skip_trainings=False,
     )

@@ -168,7 +168,7 @@ def create_ensembling_opt_prestep(
             val_loader = create_clean_loader(
                 datasets=fold_val_datasets,
                 shuffle=False,
-                batch_size=8,
+                batch_size=4,
                 transforms=None,
             )
 
