@@ -25,8 +25,8 @@ from ml_carbucks.utils.ensemble_merging import (
 )
 from ml_carbucks.utils.logger import setup_logger
 from ml_carbucks.utils.postprocessing import (
+    create_evaluator,
     postprocess_evaluation_results,
-    convert_pred2eval,
 )
 from ml_carbucks.utils.preprocessing import create_clean_loader
 
@@ -54,6 +54,12 @@ class EnsembleModel(BaseDetectionAdapter):
     fusion_norm_method: Optional[Literal["minmax", "zscore", "quantile"]] = None
     fusion_trust_factors: Optional[list[float]] = None
     fusion_exponent_factors: Optional[list[float]] = None
+
+    # --- UNUSED PARAMETERS ---
+
+    # img_size: int = -1
+    # epochs: int = -1
+    # weights: str = "N/A"
 
     # --- MAIN METHODS ---
 
@@ -101,7 +107,7 @@ class EnsembleModel(BaseDetectionAdapter):
             loader, desc="Ensemble loader", disable=not self.verbose
         ):
             batch_preds = self.predict(images)
-            predictions.extend([convert_pred2eval(pred) for pred in batch_preds])
+            predictions.extend(batch_preds)
             ground_truths.extend(
                 {
                     "boxes": target["boxes"],
@@ -110,7 +116,7 @@ class EnsembleModel(BaseDetectionAdapter):
                 for target in targets
             )
 
-        metric = MeanAveragePrecision()
+        metric = create_evaluator()
         metric.update(predictions, ground_truths)  # type: ignore
         processed = postprocess_evaluation_results(metric.compute())
         return processed

@@ -282,7 +282,6 @@ def fuse_adapters_predictions(
 
     strategy_predictions = []
     if strategy == "nms":
-        logger.info("Applying NMS fusion strategy...")
         for combined_preds in combined_list_of_tensors:
             if combined_preds.numel() == 0:
                 nms_combined: ADAPTER_PREDICTION = {
@@ -304,7 +303,6 @@ def fuse_adapters_predictions(
                 )
             strategy_predictions.append(nms_combined)
     elif strategy == "wbf":
-        logger.info("Applying WBF fusion strategy...")
         for combined_preds in combined_list_of_tensors:
             if combined_preds.numel() == 0:
                 wbf_combined: ADAPTER_PREDICTION = {
@@ -326,7 +324,6 @@ def fuse_adapters_predictions(
                 )
             strategy_predictions.append(wbf_combined)
     elif strategy is None:
-        logger.info("No fusion strategy applied; predictions stacked.")
         strategy_list_of_tensors = [
             combined_preds[combined_preds[:, 4] >= conf_threshold]
             .clone()

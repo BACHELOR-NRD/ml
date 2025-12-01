@@ -6,7 +6,7 @@ from typing import List, Literal, Type
 import optuna
 import pandas as pd
 
-from ml_carbucks import OPTUNA_DIR
+from ml_carbucks import OPTUNA_DIR, PRODUCTS_DIR
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_DATASETS,
     BaseDetectionAdapter,
@@ -148,42 +148,44 @@ def main(
 
 if __name__ == "__main__":
 
-    runtime = get_runtime(title="<hyper_runtime>")
-
-    adapters = load_adapters_from_hyperopt(
-        runtime, load_pattern="best_pickled_*_model.pkl"
+    runtime = get_runtime(
+        title="demo_combined_explorative",
+        override="20251201_114723_demo_combined_explorative",
     )
 
+    # adapters = load_adapters_from_hyperopt(
+    #     runtime, load_pattern="best_pickled_*_model.pkl"
+    # )
+
     # NOTE: manual override for debugging
-    # adapters = [
-    #     YoloUltralyticsAdapter(
-    #         checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/YoloUltralyticsAdapter_model.pkl"
-    #     ),
-    #     RtdetrUltralyticsAdapter(
-    #         checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/RtdetrUltralyticsAdapter_model.pkl"
-    #     ),
-    #     FasterRcnnAdapter(
-    #         checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/FasterRcnnAdapter_model.pkl"
-    #     ),
-    #     EfficientDetAdapter(
-    #         checkpoint="/home/bachelor/ml-carbucks/results/pickle9_redone_hyper/EfficientDetAdapter_model.pkl"
-    #     ),
-    # ]
-    # runtime = "20251123_155224_ensemble_initial"
+    adapters = [
+        YoloUltralyticsAdapter(
+            checkpoint=PRODUCTS_DIR / "best_pickled_YoloUltralyticsAdapter_model.pkl"
+        ),
+        RtdetrUltralyticsAdapter(
+            checkpoint=PRODUCTS_DIR / "best_pickled_RtdetrUltralyticsAdapter_model.pkl"
+        ),
+        FasterRcnnAdapter(
+            checkpoint=PRODUCTS_DIR / "best_pickled_FasterRcnnAdapter_model.pkl"
+        ),
+        EfficientDetAdapter(
+            checkpoint=PRODUCTS_DIR / "best_pickled_EfficientDetAdapter_model.pkl"
+        ),
+    ]
 
     main(
         adapters=adapters,
         runtime=runtime,
         results_dir=OPTUNA_DIR,
         n_trials=400,
-        patience=75,
+        patience=100,
         # NOTE: e2 only allows WBF and e1 only NMS, e3 is combined but also unnecessary exponents for nms
-        param_wrapper_version="e1",
+        param_wrapper_version="e3",
         min_percentage_improvement=0.01,
         n_jobs=1,
         # NOTE: default n_startup_trials is 10
-        sampler=optuna.samplers.TPESampler(n_startup_trials=30),
-        train_folds=DatasetsPathManager.CARBUCKS_TRAIN_CV,
-        val_folds=DatasetsPathManager.CARBUCKS_VAL_CV,
+        sampler=optuna.samplers.TPESampler(n_startup_trials=60),
+        train_folds=[DatasetsPathManager.CARBUCKS_TRAIN_STANDARD],
+        val_folds=[DatasetsPathManager.CARBUCKS_VAL_STANDARD],
         final_datasets=DatasetsPathManager.CARBUCKS_TRAIN_ALL,
     )

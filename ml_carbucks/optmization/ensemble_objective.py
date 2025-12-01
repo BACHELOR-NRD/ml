@@ -228,13 +228,13 @@ def create_ensembling_opt_prestep(
             )
 
     metadata = {
-        "adapters_crossval_metrics": adapters_crossval_metrics,
+        # "adapters_crossval_metrics": adapters_crossval_metrics,
         "adapters_avg_fold_map_50": [
             sum(fold_metrics["map_50"] for fold_metrics in adapter_metrics)
             / len(adapter_metrics)
             for adapter_metrics in adapters_crossval_metrics
         ],
-        "adapters_dataset_metrics": adapters_dataset_metrics,
+        # "adapters_dataset_metrics": adapters_dataset_metrics,
         "adapters_dataset_map_50": [
             adapter_metrics["map_50"] for adapter_metrics in adapters_dataset_metrics
         ],

@@ -437,6 +437,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
                 f"Pickled adapter class mismatch: expected '{self.__class__.__name__}', got '{obj_class_name}'"
             )
 
+        self.checkpoint = None
         params = obj["params"]
 
         logger.warning("Overwriting adapter parameters with loaded pickled parameters.")
