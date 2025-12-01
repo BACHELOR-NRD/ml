@@ -6,6 +6,9 @@ import numpy as np
 import pickle as pkl
 from tqdm import tqdm
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
+from PIL import Image, ImageOps
+import base64
+from io import BytesIO
 
 from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_METRICS,
@@ -57,9 +60,9 @@ class EnsembleModel(BaseDetectionAdapter):
 
     # --- UNUSED PARAMETERS ---
 
-    # img_size: int = -1
-    # epochs: int = -1
-    # weights: str = "N/A"
+    img_size: int = -1
+    epochs: int = -1
+    weights: str = "N/A"
 
     # --- MAIN METHODS ---
 
@@ -69,8 +72,9 @@ class EnsembleModel(BaseDetectionAdapter):
             self._load_from_checkpoint(self.checkpoint)
 
         elif len(self.adapters) > 0:
-            for adapter in self.adapters:
-                adapter._setup()
+            logger.warning(
+                "Skipping individual adapter setup as they should be post-setup."
+            )
         else:
             raise ValueError("EnsembleModel requires at least one adapter to setup.")
 
@@ -88,11 +92,12 @@ class EnsembleModel(BaseDetectionAdapter):
     def evaluate(
         self,
         datasets: List[Tuple[str | Path, str | Path]],
-        batch_size: int = 8,
     ) -> ADAPTER_METRICS:
         """
         Evaluate fused ensemble predictions against the provided datasets.
         """
+
+        batch_size = self._get_allowed_batch_size()
 
         loader = create_clean_loader(
             datasets=datasets,
@@ -129,7 +134,9 @@ class EnsembleModel(BaseDetectionAdapter):
         """
         Run all adapters on a batch of images and return fused predictions.
         """
-        adapters_predictions = [adapter.predict(images) for adapter in self.adapters]
+
+        batch_size = self._get_allowed_batch_size()
+        n_images = len(images)
 
         if self.fusion_norm_method is not None and self.distributions is None:
             logger.error(
@@ -140,19 +147,42 @@ class EnsembleModel(BaseDetectionAdapter):
                 "Unable to applay normalization because normalization metadata is not present."
             )
 
-        fused_predictions = fuse_adapters_predictions(
-            adapters_predictions=adapters_predictions,
-            max_detections=self.fusion_max_detections,
-            iou_threshold=self.fusion_iou_threshold,
-            conf_threshold=self.fusion_conf_threshold,
-            strategy=self.fusion_strategy,
-            trust_factors=self.fusion_trust_factors,
-            exponent_factors=self.fusion_exponent_factors,
-            score_normalization_method=self.fusion_norm_method,
-            distributions=self.distributions,
-        )
+        final_predictions: List[ADAPTER_PREDICTION] = []
 
-        return fused_predictions
+        for start_idx in range(0, n_images, batch_size):
+            end_idx = min(start_idx + batch_size, n_images)
+            batch_images = images[start_idx:end_idx]
+            adapters_predictions = [
+                adapter.predict(batch_images) for adapter in self.adapters
+            ]
+
+            fused_predictions = fuse_adapters_predictions(
+                adapters_predictions=adapters_predictions,
+                max_detections=self.fusion_max_detections,
+                iou_threshold=self.fusion_iou_threshold,
+                conf_threshold=self.fusion_conf_threshold,
+                strategy=self.fusion_strategy,
+                trust_factors=self.fusion_trust_factors,
+                exponent_factors=self.fusion_exponent_factors,
+                score_normalization_method=self.fusion_norm_method,
+                distributions=self.distributions,
+            )
+            final_predictions.extend(fused_predictions)
+
+        return final_predictions
+
+    def predict_from_base64(
+        self,
+        base64_images: List[str],
+    ) -> List[ADAPTER_PREDICTION]:
+
+        # load each image and fix their exif tag and call predict method
+        images: List[np.ndarray] = []
+        for b64_img in base64_images:
+            img = self._load_image_from_base64(b64_img)
+            images.append(img)
+
+        return self.predict(images)
 
     def debug(
         self,
@@ -204,6 +234,7 @@ class EnsembleModel(BaseDetectionAdapter):
                 f"Pickled adapter class mismatch: expected '{self.__class__.__name__}', got '{obj_class_name}'"
             )
 
+        self.checkpoint = None
         params = obj["params"]
 
         # NOTE: perhaps temporary solution that should be improved
@@ -235,6 +266,30 @@ class EnsembleModel(BaseDetectionAdapter):
             **cloned_params,
         )
         return cloned_ensemble
+
+    # --- HELPER METHODS ---
+
+    def _get_allowed_batch_size(self) -> int:
+        allowed_batch_size = max(
+            2, min(adapter.get_params()["batch_size"] for adapter in self.adapters)
+        )
+        logger.info(f"Using ensemble batch size: {allowed_batch_size}")
+        return allowed_batch_size
+
+    def _load_image_from_base64(self, b64_img: str) -> np.ndarray:
+
+        # Decode base64 string to bytes
+        img_data = base64.b64decode(b64_img)
+        img = Image.open(BytesIO(img_data))
+        exif = img.getexif()
+        orientation = exif.get(274, 1)  # 274 is the EXIF tag for orientation
+
+        if orientation != 1:
+            img_corrected = ImageOps.exif_transpose(img)
+        else:
+            img_corrected = img
+
+        return np.array(img_corrected)
 
 
 class EnsembleFacilitator:

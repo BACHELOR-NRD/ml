@@ -426,8 +426,15 @@ class RtdetrUltralyticsAdapter(UltralyticsAdapter):
 
         all_detections: List[ADAPTER_PREDICTION] = []
         for result in results:
+            image_h, image_w = result.orig_shape
+            boxes = result.boxes.xyxy.clone()
 
-            boxes = result.boxes.xyxy
+            # NOTE: Clipping boxes to image size is important for RTDETR as it can produce boxes
+            # that are out of image bounds.
+            boxes[:, 0] = boxes[:, 0].clip(0, image_w)
+            boxes[:, 1] = boxes[:, 1].clip(0, image_h)
+            boxes[:, 2] = boxes[:, 2].clip(0, image_w)
+            boxes[:, 3] = boxes[:, 3].clip(0, image_h)
             scores = result.boxes.conf
             labels = (
                 result.boxes.cls + 1

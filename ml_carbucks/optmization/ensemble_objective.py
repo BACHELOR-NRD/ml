@@ -1,3 +1,4 @@
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal
 
@@ -13,7 +14,7 @@ from ml_carbucks.adapters.BaseDetectionAdapter import (
     ADAPTER_PREDICTION,
     BaseDetectionAdapter,
 )
-from ml_carbucks.ensemble.EnsembleModel import EnsembleModel
+from ml_carbucks.adapters.EnsembleModel import EnsembleModel
 from ml_carbucks.optmization.TrialParamWrapper import TrialParamWrapper
 from ml_carbucks.utils.ensemble_merging import (
     ScoreDistribution,
@@ -94,6 +95,7 @@ def create_ensembling_opt_prestep(
     train_folds: List[ADAPTER_DATASETS],
     val_folds: List[ADAPTER_DATASETS],
     results_dir: Path,
+    skip_trainings: bool = False,
 ) -> tuple[
     List[List[ADAPTER_PREDICTION]], List[dict], List[ScoreDistribution], Dict[str, Any]
 ]:
@@ -143,17 +145,25 @@ def create_ensembling_opt_prestep(
             fold_train_datasets = train_folds[fold_idx]
             fold_val_datasets = val_folds[fold_idx]
 
-            new_adapters = [adapter.clone() for adapter in adapters]
+            if not skip_trainings:
+                new_adapters = [adapter.clone() for adapter in adapters]
+            else:
+                new_adapters = [deepcopy(adapter) for adapter in adapters]
 
             logger.info(f"Processing fold {fold_idx + 1}/{len(train_folds)}")
 
             for adapter_idx in range(len(new_adapters)):
-                logger.info(
-                    f"Fitting adapter {adapter_idx + 1}/{len(new_adapters)} on fold {fold_idx + 1}/{len(train_folds)}"
-                )
-                new_adapters[adapter_idx] = new_adapters[adapter_idx].fit(
-                    datasets=fold_train_datasets
-                )
+                if not skip_trainings:
+                    logger.info(
+                        f"Fitting adapter {adapter_idx + 1}/{len(new_adapters)} on fold {fold_idx + 1}/{len(train_folds)}"
+                    )
+                    new_adapters[adapter_idx] = new_adapters[adapter_idx].fit(
+                        datasets=fold_train_datasets
+                    )
+                else:
+                    logger.warning(
+                        "Skipping adapter trainings, should be used for debugging only"
+                    )
 
             val_loader = create_clean_loader(
                 datasets=fold_val_datasets,
@@ -178,7 +188,7 @@ def create_ensembling_opt_prestep(
                 for adapter_idx, adapter in enumerate(new_adapters):
                     preds = adapter.predict(
                         images,
-                        conf_threshold=0.05,
+                        conf_threshold=0.01,
                         max_detections=5,
                         iou_threshold=0.7,
                     )
@@ -250,17 +260,18 @@ def create_ensemble(
     distributions: List[ScoreDistribution],
     results_dir: Path,
     final_datasets: ADAPTER_DATASETS | None = None,
+    skip_trainings: bool = False,
 ) -> EnsembleModel:
     """
     A function that creates and fits an EnsembleModel from given adapters and parameters.
     The idea is to create a final ensemble model that would be production ready.
     """
 
-    # NOTE: this is quite stupid but necessary to clone,setup and clone without weights again
-    # 1. first clone disassociates the object from the original one (not strictly necessary here but good practice)
-    # 2. loads all hyperparameters and setups the adapter
-    # 3. finally, clone again but this time clean the saved weights to avoid carrying over any trained weights
-    ensemble_adapters = [adapter.clone() for adapter in adapters]
+    if not skip_trainings:
+        ensemble_adapters = [adapter.clone() for adapter in adapters]
+    else:
+        ensemble_adapters = [deepcopy(adapter) for adapter in adapters]
+
     ensemble_params = TrialParamWrapper.convert_ensemble_params_to_model_format(
         params, ensemble_size=len(ensemble_adapters)
     )
@@ -272,6 +283,10 @@ def create_ensemble(
     if final_datasets is None:
         logger.warning(
             "Full datasets for ensemble training not provided. EnsembleModel will be created without fitting."
+        )
+    elif skip_trainings is True:
+        logger.warning(
+            "Skipping ensemble model fitting as per user request. This is intended for debugging purposes only!"
         )
     else:
         ensemble_model.fit(final_datasets)

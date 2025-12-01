@@ -11,6 +11,7 @@ from ml_carbucks.adapters.UltralyticsAdapter import (
 )
 from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter
 from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter
+from ml_carbucks.adapters.EnsembleModel import EnsembleModel
 
 __all__ = [
     "BaseDetectionAdapter",
@@ -22,4 +23,5 @@ __all__ = [
     "RtdetrUltralyticsAdapter",
     "FasterRcnnAdapter",
     "EfficientDetAdapter",
+    "EnsembleModel",
 ]

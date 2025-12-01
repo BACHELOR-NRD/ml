@@ -17,7 +17,7 @@ from ml_carbucks.adapters.UltralyticsAdapter import (  # noqa: F401
 )
 from ml_carbucks.adapters.FasterRcnnAdapter import FasterRcnnAdapter  # noqa: F401
 from ml_carbucks.adapters.EfficientDetAdapter import EfficientDetAdapter  # noqa: F401
-from ml_carbucks.ensemble.EnsembleModel import EnsembleModel
+from ml_carbucks.adapters.EnsembleModel import EnsembleModel
 from ml_carbucks.optmization.ensemble_objective import (
     create_ensemble,
     create_objective,
@@ -80,7 +80,12 @@ def main(
     min_percentage_improvement: float = 0.01,
     n_jobs: int = 1,
     sampler: optuna.samplers.BaseSampler | None = None,
+    skip_trainings: bool = False,
 ) -> tuple[EnsembleModel, pd.Series]:
+
+    if skip_trainings:
+        logger.warning("Skipping adapter trainings as per user request.")
+        logger.warning("This is intended for debugging purposes only!")
 
     adapters_predictions, ground_truths, distributions, metadata = (
         create_ensembling_opt_prestep(
@@ -88,6 +93,7 @@ def main(
             train_folds=train_folds,
             val_folds=val_folds,
             results_dir=results_dir,
+            skip_trainings=skip_trainings,
         )
     )
 
@@ -118,10 +124,12 @@ def main(
                 for fold in val_folds
                 for dataset in fold
             ],
+            "skip_trainings": skip_trainings,
             **metadata,
         },
         study_attributes={
             "param_wrapper_version": param_wrapper_version,
+            "skip_trainings": skip_trainings,
             **metadata,
         },
         n_jobs=n_jobs,
@@ -137,6 +145,7 @@ def main(
         distributions=distributions,
         final_datasets=final_datasets,
         results_dir=results_dir,
+        skip_trainings=skip_trainings,
     )
 
     sr = pd.Series(result)
@@ -185,7 +194,10 @@ if __name__ == "__main__":
         n_jobs=1,
         # NOTE: default n_startup_trials is 10
         sampler=optuna.samplers.TPESampler(n_startup_trials=60),
+        # NOTE: this should be folds not standard datasets, current setup is only for quick debugging
         train_folds=[DatasetsPathManager.CARBUCKS_TRAIN_STANDARD],
         val_folds=[DatasetsPathManager.CARBUCKS_VAL_STANDARD],
         final_datasets=DatasetsPathManager.CARBUCKS_TRAIN_ALL,
+        # NOTE: skip trainings for quick debugging only
+        skip_trainings=True,
     )
