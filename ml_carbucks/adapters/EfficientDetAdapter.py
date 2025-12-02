@@ -408,6 +408,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         params = self.get_params(skip=["checkpoint"])
 
+        self.model.to("cpu")
         obj = {
             "class_data": {
                 "name": self.__class__.__name__,
@@ -420,6 +421,7 @@ class EfficientDetAdapter(BaseDetectionAdapter):
 
         pkl.dump(obj, open(save_path, "wb"))
 
+        self.model.to(self.device)
         return save_path
 
     # --- HELPER METHODS ---

@@ -253,6 +253,8 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
         weights_path = Path(dir) / f"{prefix}weights{suffix}.pt"
+
+        self.model.to("cpu")
         self.model.save(weights_path)  # type: ignore
 
         weights = torch.load(weights_path, weights_only=False)
@@ -273,6 +275,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
 
         pkl.dump(obj, open(save_path, "wb"))
 
+        self.model.to(self.device)
         return save_path
 
     def _load_from_checkpoint(
