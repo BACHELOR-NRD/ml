@@ -137,6 +137,8 @@ def create_ensembling_opt_prestep(
             distributions,
             adapters_crossval_metrics,
             adapters_dataset_metrics,
+            adapters_hashes,
+            adapters_names,
         ) = obj
 
     else:
@@ -219,6 +221,9 @@ def create_ensembling_opt_prestep(
             dataset_metrics = postprocess_evaluation_results(evaluator.compute())
             adapters_dataset_metrics.append(dataset_metrics)
 
+        adapter_hashes = [adapter.hash() for adapter in adapters]
+        adapter_names = [adapter.__class__.__name__ for adapter in adapters]
+
         saved_prestep_path.parent.mkdir(parents=True, exist_ok=True)
         pkl.dump(
             (
@@ -227,6 +232,8 @@ def create_ensembling_opt_prestep(
                 distributions,
                 adapters_crossval_metrics,
                 adapters_dataset_metrics,
+                adapter_hashes,
+                adapter_names,
             ),
             open(saved_prestep_path, "wb"),
         )

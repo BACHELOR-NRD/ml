@@ -151,7 +151,15 @@ class BaseDetectionAdapter(ABC):
             return False
 
     def set_params(self, params: Dict[str, Any]) -> "BaseDetectionAdapter":
-        old_weights = self.weights
+
+        # NOTE: this is crucial for models like EfficientDet or FasterRCNN that require re-initialization
+        # in case of change of certain parameters that create the model architecture
+        old_params_to_remember = ["img_size", "weights", "n_classes"]
+        old_params_dict = {
+            key: getattr(self, key)
+            for key in old_params_to_remember
+            if hasattr(self, key)
+        }
 
         for key, value in params.items():
             if hasattr(self, key):
@@ -161,11 +169,15 @@ class BaseDetectionAdapter(ABC):
                     f"Parameter {key} not found in {self.__class__.__name__}"
                 )
 
-        if "weights" in params and params["weights"] != old_weights:
-            logger.warning(
-                "Weights parameter changed. Re-running setup to load new weights model."
-            )
-            self._setup()
+        for key in old_params_to_remember:
+            if key in old_params_dict:
+                old_value = old_params_dict[key]
+                new_value = getattr(self, key)
+                if old_value != new_value:
+                    logger.warning(
+                        f"Parameter '{key}' changed from {old_value} to {new_value}. Re-running setup."
+                    )
+                    self._setup()
 
         return self
 

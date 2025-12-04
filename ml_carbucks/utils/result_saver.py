@@ -15,14 +15,13 @@ class ResultSaver:
     def __post_init__(self):
         Path(self.path).mkdir(parents=True, exist_ok=True)
 
-    def save(
-        self, epoch: int, loss: float, val_map_50_95: float, **kwargs
-    ) -> "ResultSaver":
+    def save(self, **kwargs) -> "ResultSaver":
+
         self.data.append(
             {
-                "epoch": epoch,
-                "loss": loss,
-                "val_map_50_95": val_map_50_95,
+                # "epoch": epoch,
+                # "loss": loss,
+                # "val_map_50_95": val_map_50_95,
                 **kwargs,
                 **self.metadata,
             }
@@ -35,16 +34,19 @@ class ResultSaver:
 
     def plot(
         self,
+        x: str = "epoch",
+        y: str = "loss",
         secondaries_y: list[str] = ["val_map_50_95"],
         save: bool = True,
         show: bool = True,
+        title: str = "Training Metrics over Epochs",
     ) -> "ResultSaver":
         df = pd.DataFrame(self.data)
         df.plot(
-            x="epoch",
-            y=["loss", *secondaries_y],
+            x=x,
+            y=[y, *secondaries_y],
             secondary_y=secondaries_y,  # type: ignore
-            title="Training Metrics over Epochs",
+            title=title,
         )
         if save:
             plt.savefig(Path(self.path) / f"{self.name}_plot.png")
