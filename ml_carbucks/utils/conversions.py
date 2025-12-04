@@ -148,7 +148,7 @@ def convert_coco_to_yolo_with_train_val(
     return merged_yaml_path
 
 
-def convert_coco_to_yolo(img_dir: str, ann_file: str) -> Path:
+def convert_coco_to_yolo(img_dir: str | Path, ann_file: str | Path) -> Path:
     start_time = time.time()
     ann_path = Path(ann_file)
     img_dir_path = Path(img_dir)
