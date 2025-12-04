@@ -19,9 +19,6 @@ class ResultSaver:
 
         self.data.append(
             {
-                # "epoch": epoch,
-                # "loss": loss,
-                # "val_map_50_95": val_map_50_95,
                 **kwargs,
                 **self.metadata,
             }
