@@ -31,7 +31,15 @@ def preprocess_images(
     return preprocessed_images, scales, original_sizes
 
 
-def create_transforms(is_training: bool, img_size: int) -> A.Compose:
+def create_transforms(
+    is_training: bool,
+    img_size: int,
+    affine: bool = True,
+    flip: bool = True,
+    crop: bool = True,
+    noise: bool = True,
+    color_jitter: bool = True,
+) -> A.Compose:
 
     base = [
         # Always resize and pad to square input
@@ -47,42 +55,54 @@ def create_transforms(is_training: bool, img_size: int) -> A.Compose:
 
     if is_training:
         # --- Spatial augmentations (geometry) ---
-        base += [
-            A.Affine(
-                translate_percent={"x": (-0.05, 0.05), "y": (-0.05, 0.05)},  # ±5% shift
-                scale=(0.9, 1.1),  # ±10% zoom
-                rotate=(-10, 10),  # ±10 degrees rotation
-                fit_output=False,
-                fill=(0, 0, 0),  # fill color for borders
-                border_mode=0,  # cv2.BORDER_CONSTANT
-                p=0.7,
-            ),
-            A.HorizontalFlip(p=0.5),
-            A.RandomSizedBBoxSafeCrop(height=img_size, width=img_size, p=0.3),
-            # --- Photometric augmentations (color) ---
-            A.OneOf(
-                [
-                    A.RandomBrightnessContrast(
-                        brightness_limit=0.3, contrast_limit=0.3, p=1
-                    ),
-                    A.HueSaturationValue(
-                        hue_shift_limit=10,
-                        sat_shift_limit=15,
-                        val_shift_limit=10,
-                        p=1,
-                    ),
-                    A.CLAHE(clip_limit=2, p=1),
-                ],
-                p=0.5,
-            ),
-            A.GaussNoise(
-                std_range=(0.01, 0.05),
-                mean_range=(0.0, 0.0),
-                per_channel=True,
-                noise_scale_factor=1.0,
-                p=0.2,
-            ),
-        ]
+        if affine:
+            base += [
+                A.Affine(
+                    translate_percent={
+                        "x": (-0.05, 0.05),
+                        "y": (-0.05, 0.05),
+                    },  # ±5% shift
+                    scale=(0.9, 1.1),  # ±10% zoom
+                    rotate=(-10, 10),  # ±10 degrees rotation
+                    fit_output=False,
+                    fill=(0, 0, 0),  # fill color for borders
+                    border_mode=0,  # cv2.BORDER_CONSTANT
+                    p=0.7,
+                )
+            ]
+        if flip:
+            base += [A.HorizontalFlip(p=0.5)]
+        if crop:
+            base += [A.RandomSizedBBoxSafeCrop(height=img_size, width=img_size, p=0.3)]
+        # --- Photometric augmentations (color) ---
+        if color_jitter:
+            base += [
+                A.OneOf(
+                    [
+                        A.RandomBrightnessContrast(
+                            brightness_limit=0.3, contrast_limit=0.3, p=1
+                        ),
+                        A.HueSaturationValue(
+                            hue_shift_limit=10,
+                            sat_shift_limit=15,
+                            val_shift_limit=10,
+                            p=1,
+                        ),
+                        A.CLAHE(clip_limit=2, p=1),
+                    ],
+                    p=0.5,
+                )
+            ]
+        if noise:
+            base += [
+                A.GaussNoise(
+                    std_range=(0.01, 0.05),
+                    mean_range=(0.0, 0.0),
+                    per_channel=True,
+                    noise_scale_factor=1.0,
+                    p=0.2,
+                )
+            ]
 
     # --- Normalization and tensor conversion ---
     base += [

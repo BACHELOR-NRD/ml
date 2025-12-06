@@ -65,6 +65,11 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     batch_size: int = 8
     accumulation_steps: int = 4
     scheduler: Optional[Literal["cosine"]] = None
+    augmentation_affine: bool = True
+    augmentation_flip: bool = True
+    augmentation_crop: bool = True
+    augmentation_color_jitter: bool = True
+    augmentation_noise: bool = True
 
     # --- SETUP PARAMETERS ---
 
@@ -470,5 +475,10 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             transforms=create_transforms(
                 is_training=is_training and self.training_augmentations,
                 img_size=img_size,
+                affine=self.augmentation_affine,
+                flip=self.augmentation_flip,
+                color_jitter=self.augmentation_color_jitter,
+                noise=self.augmentation_noise,
+                crop=self.augmentation_crop,
             ),
         )

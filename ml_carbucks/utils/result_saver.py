@@ -11,9 +11,15 @@ class ResultSaver:
     name: str
     data: list = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
+    append: bool = True
 
     def __post_init__(self):
         Path(self.path).mkdir(parents=True, exist_ok=True)
+        if self.append:
+            existing_file = Path(self.path) / f"{self.name}.csv"
+            if existing_file.exists():
+                existing_data = pd.read_csv(existing_file)
+                self.data = existing_data.to_dict(orient="records")
 
     def save(self, **kwargs) -> "ResultSaver":
 
