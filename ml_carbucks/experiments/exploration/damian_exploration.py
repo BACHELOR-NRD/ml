@@ -204,16 +204,16 @@ def aug_expo():
         "erasing": 0.0,
     }
     aug_configs = {
-        # "empty_aug": {**empty_aug},
-        # "flips_only": {**empty_aug, "fliplr": 0.5, "flipud": 0.5},
-        # "light_aug": {
-        #     **empty_aug,
-        #     "hsv_h": 0.015,
-        #     "hsv_s": 0.7,
-        #     "hsv_v": 0.4,
-        #     "fliplr": 0.5,
-        # },
-        # "rotation_translation": {**empty_aug, "degrees": 10.0, "translate": 0.1},
+        "empty_aug": {**empty_aug},
+        "flips_only": {**empty_aug, "fliplr": 0.5, "flipud": 0.5},
+        "light_aug": {
+            **empty_aug,
+            "hsv_h": 0.015,
+            "hsv_s": 0.7,
+            "hsv_v": 0.4,
+            "fliplr": 0.5,
+        },
+        "rotation_translation": {**empty_aug, "degrees": 10.0, "translate": 0.1},
         "bgr_perspective_translate_scale": {
             **empty_aug,
             "bgr": 0.5,
@@ -289,6 +289,9 @@ def aug_fasterrcnn():
                 )  # remove "augmentation_"
             else:
                 aug_params[augmentation_names[j]] = False
+
+        if len(aug_name_parts) > 1:
+            continue
         aug_name = "_".join(aug_name_parts) if aug_name_parts else "no_augmentation"
         logger.info(f"Starting training with augmentation: {aug_name}")
 
