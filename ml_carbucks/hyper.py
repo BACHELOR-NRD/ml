@@ -34,7 +34,7 @@ def main(
     results_dir: Path,
     train_datasets: list[tuple],
     val_datasets: list[tuple],
-    param_wrapper_version: Literal["h1", "h2"],
+    param_wrapper_version: Literal["h1", "h2", "h3"],
     plot_with_debug: bool = False,
     n_trials: int = 25,
     patience: int = -1,
@@ -104,13 +104,13 @@ def main(
 
 if __name__ == "__main__":
 
-    runtime = get_runtime(title="", override="20251123_223647_heavy_models")
+    runtime = get_runtime(title="medium_nitpicking")
 
     adapter_list: list[BaseDetectionAdapter] = [
-        YoloUltralyticsAdapter(verbose=True),
+        # YoloUltralyticsAdapter(verbose=True),
         EfficientDetAdapter(verbose=True),
         RtdetrUltralyticsAdapter(verbose=True),
-        FasterRcnnAdapter(verbose=True),
+        # FasterRcnnAdapter(verbose=True),
     ]
 
     # NOTE: defult params are setup here
@@ -119,7 +119,7 @@ if __name__ == "__main__":
         runtime=runtime,
         train_datasets=DatasetsPathManager.CARBUCKS_TRAIN_STANDARD,
         val_datasets=DatasetsPathManager.CARBUCKS_VAL_STANDARD,
-        param_wrapper_version="h2",  # NOTE: h2 will use bigger image sizes and epochs so it takes longer
+        param_wrapper_version="h3",  # NOTE: h2 will use bigger image sizes and epochs so it takes longer, h3 is a compromise
         plot_with_debug=True,
         results_dir=OPTUNA_DIR,
         n_trials=30,

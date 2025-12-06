@@ -12,7 +12,7 @@ logger = setup_logger(__name__)
 @dataclass
 class TrialParamWrapper:
     # fmt: off
-    version: Literal["h1", "h2", "e1", "e2", "e3"]
+    version: Literal["h1", "h2", "h3", "e1", "e2", "e3"]
     ensemble_size: Optional[int] = None
     """A class that is to help the creation of the trial parameters."""
 
@@ -22,14 +22,17 @@ class TrialParamWrapper:
     V2_IMG_SIZE_OPTIONS: List[int] = field(default_factory=lambda: [768])
     """Bigger sizes for better accuracy."""
 
+    V3_IMG_SIZE_OPTIONS: List[int] = field(default_factory=lambda: [512])
+    """Medium sizes for a compromise between speed and accuracy."""
+
     def _get_yolo_params(self, trial: optuna.Trial) -> Dict[str, Any]:
 
         params: Dict[str, Any] = {
-            "epochs": trial.suggest_int("epochs", 15, 40),
+            "epochs": trial.suggest_int("epochs", 15, 30),
             "lr": trial.suggest_float("lr", 1e-4, 5e-3, log=True),
-            "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
+            "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-3, log=True),
             "optimizer": trial.suggest_categorical("optimizer", ["Adam", "AdamW"]),
-            "momentum": trial.suggest_float("momentum", 0.3, 0.99),
+            "momentum": trial.suggest_float("momentum", 0.80, 0.99),
         }
 
         if self.version not in ("h1", "h2"):
@@ -63,14 +66,14 @@ class TrialParamWrapper:
     def _get_rtdetr_params(self, trial: optuna.Trial) -> Dict[str, Any]:
 
         params: Dict[str, Any] = {
-            "epochs": trial.suggest_int("epochs", 15, 40),
+            "epochs": trial.suggest_int("epochs", 15, 30),
             "lr": trial.suggest_float("lr", 1e-4, 5e-3, log=True),
-            "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True),
-            "momentum": trial.suggest_float("momentum", 0.3, 0.99),
+            "weight_decay": trial.suggest_float("weight_decay", 1e-5, 1e-3, log=True),
+            "momentum": trial.suggest_float("momentum", 0.80, 0.99),
             "optimizer": trial.suggest_categorical("optimizer", ["Adam", "AdamW"]),
         }
 
-        if self.version not in ("h1", "h2"):
+        if self.version not in ("h1", "h2", "h3"):
             raise ValueError(
                 f"RTDETR parameters are only available for versions 'h1' and 'h2', got '{self.version}'"
             )
@@ -85,7 +88,7 @@ class TrialParamWrapper:
                     "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
-        else:
+        elif self.version == "h2":
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["rtdetr-x.pt"]),
@@ -95,12 +98,22 @@ class TrialParamWrapper:
                     "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
+        else:
+            params.update(
+                {
+                    "weights": trial.suggest_categorical("weights", ["rtdetr-l.pt"]),
+                    "img_size": trial.suggest_categorical("img_size", self.V3_IMG_SIZE_OPTIONS),
+                    "batch_size": trial.suggest_categorical("batch_size", [32]),
+                    "accumulation_steps": trial.suggest_categorical("accumulation_steps", [1, 2]),
+                    "scheduler": trial.suggest_categorical("scheduler", [None]),
+                }
+            )
         return params
 
     def _get_fasterrcnn_params(self, trial: optuna.Trial) -> Dict[str, Any]:
 
         params: Dict[str, Any] = {
-            "epochs": trial.suggest_int("epochs", 15, 40),
+            "epochs": trial.suggest_int("epochs", 15, 30),
             "lr_head": trial.suggest_float("lr_head", 5e-5, 3e-3, log=True),
             "weight_decay_head": trial.suggest_float("weight_decay_head", 1e-5, 1e-3, log=True),
             "optimizer": trial.suggest_categorical("optimizer", ["SGD", "AdamW"]),
@@ -108,9 +121,9 @@ class TrialParamWrapper:
 
         }
 
-        if self.version not in ("h1", "h2"):
+        if self.version not in ("h1", "h2", "h3"):
             raise ValueError(
-                f"FasterRCNN parameters are only available for versions 'h1' and 'h2', got '{self.version}'"
+                f"FasterRCNN parameters are only available for versions 'h1', 'h2', and 'h3', got '{self.version}'"
             )
 
         elif self.version == "h1":
@@ -123,7 +136,7 @@ class TrialParamWrapper:
                     "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
-        else:
+        elif self.version == "h2":
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["V2"]),
@@ -133,22 +146,32 @@ class TrialParamWrapper:
                     "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
+        else:
+            params.update(
+                {
+                    "weights": trial.suggest_categorical("weights", ["V2"]),
+                    "img_size": trial.suggest_categorical("img_size", self.V3_IMG_SIZE_OPTIONS),
+                    "batch_size": trial.suggest_categorical("batch_size", [16]),
+                    "accumulation_steps": trial.suggest_categorical("accumulation_steps", [2, 4]),
+                    "scheduler": trial.suggest_categorical("scheduler", [None]),
+                }
+            )
 
         return params
 
     def _get_efficientdet_params(self, trial: optuna.Trial) -> Dict[str, Any]:
 
         params: Dict[str, Any] = {
-            "epochs": trial.suggest_int("epochs", 15, 40),
+            "epochs": trial.suggest_int("epochs", 15, 30),
             "lr": trial.suggest_float("lr", 5e-4, 1e-2, log=True),
             "weight_decay": trial.suggest_float("weight_decay", 5e-6, 1e-2, log=True),
             "loader": trial.suggest_categorical("loader", ["inbuilt"]),
             "optimizer": trial.suggest_categorical("optimizer", ["momentum", "adamw"]),
         }
 
-        if self.version not in ("h1", "h2"):
+        if self.version not in ("h1", "h2", "h3"):
             raise ValueError(
-                f"EfficientDet parameters are only available for versions 'h1' and 'h2', got '{self.version}'"
+                f"EfficientDet parameters are only available for versions 'h1', 'h2', and 'h3', got '{self.version}'"
             )
 
         elif self.version == "h1":
@@ -161,12 +184,22 @@ class TrialParamWrapper:
                     "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }
             )
-        else:
+        elif self.version == "h2":
             params.update(
                 {
                     "weights": trial.suggest_categorical("weights", ["tf_efficientdet_d3"]),
                     "img_size": trial.suggest_categorical("img_size", self.V2_IMG_SIZE_OPTIONS),
                     "batch_size": trial.suggest_categorical("batch_size", [4]),
+                    "accumulation_steps": trial.suggest_categorical("accumulation_steps", [4, 8]),
+                    "scheduler": trial.suggest_categorical("scheduler", [None]),
+                }
+            )
+        else:
+            params.update(
+                {
+                    "weights": trial.suggest_categorical("weights", ["tf_efficientdet_d3"]),
+                    "img_size": trial.suggest_categorical("img_size", self.V3_IMG_SIZE_OPTIONS),
+                    "batch_size": trial.suggest_categorical("batch_size", [8]),
                     "accumulation_steps": trial.suggest_categorical("accumulation_steps", [4, 8]),
                     "scheduler": trial.suggest_categorical("scheduler", [None]),
                 }

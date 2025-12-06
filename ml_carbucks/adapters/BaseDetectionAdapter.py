@@ -169,6 +169,7 @@ class BaseDetectionAdapter(ABC):
                     f"Parameter {key} not found in {self.__class__.__name__}"
                 )
 
+        needs_reset = False
         for key in old_params_to_remember:
             if key in old_params_dict:
                 old_value = old_params_dict[key]
@@ -177,7 +178,10 @@ class BaseDetectionAdapter(ABC):
                     logger.warning(
                         f"Parameter '{key}' changed from {old_value} to {new_value}. Re-running setup."
                     )
-                    self._setup()
+                    needs_reset = True
+
+        if needs_reset:
+            self._setup()
 
         return self
 
