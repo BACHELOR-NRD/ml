@@ -3,7 +3,7 @@ from pathlib import Path
 import pickle as pkl  # noqa: F401
 
 import torch  # noqa: F401
-from ml_carbucks import OPTUNA_DIR, PRODUCTS_DIR
+from ml_carbucks import DATA_DIR, OPTUNA_DIR, PRODUCTS_DIR
 from ml_carbucks.adapters import (
     YoloUltralyticsAdapter,
     RtdetrUltralyticsAdapter,
@@ -243,7 +243,7 @@ def aug_expo():
 
         model = YOLO("yolo11m.pt")
         res = model.train(
-            data="/home/damian/Desktop/Projects/Bachelor/ml/data/final_carbucks/standard/dataset_combined.yaml",
+            data=DATA_DIR / "final_carbucks" / "standard" / "dataset_combined.yaml",
             **params,
             project=RESULTS_DIR / "yolo_augmentation_exploration",
             name=aug_name,
@@ -298,7 +298,7 @@ def aug_fasterrcnn():
         model = FasterRcnnAdapter(
             batch_size=16,
             accumulation_steps=2,
-            img_size=320,
+            img_size=386,
             epochs=15,
             verbose=True,
             training_augmentations=True,
@@ -335,5 +335,5 @@ if __name__ == "__main__":
     # evaluate_ensemble()
     # debug_ensemble_checkpoint_cpu()
     # augumentation_analysis()
-    # aug_expo()
     aug_fasterrcnn()
+    aug_expo()

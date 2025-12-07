@@ -52,7 +52,10 @@ def create_objective(
             )
 
             trial.set_user_attr("params", params)
-            trial.set_user_attr("metrics", metrics)
+            trial.set_user_attr(
+                "map_50_per_class",
+                metrics["map_per_class"],
+            )
             trial.set_user_attr("adapter_params", trial_adapter.get_params())
 
             nonlocal best_score
@@ -106,6 +109,10 @@ def custom_objective_func(
 
         logger.info(
             f"Custom objective completed with score: {score}, params: {params}, metrics: {metrics}"
+        )
+        trial.set_user_attr(
+            "map_50_per_class",
+            metrics["map_per_class"],
         )
 
         _ = trial_adapter.save(

@@ -2,10 +2,12 @@
 
 if [ -z "$1" ]; then
   echo "Usage: $0 <directory>"
-  exit 1
+  directory="optuna/studies"
+  echo "No directory provided. Using default: $directory"
+else
+  directory="$1"
 fi
 
-directory=$1
 declare -a pids=()
 
 # Trap EXIT, SIGINT, SIGTERM to kill all launched processes
