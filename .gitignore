@@ -48,3 +48,6 @@ __pycache__/
 **/optuna/hyper/**/*.yaml
 **/optuna/ensemble/**/*.json
 **/optuna/studies_backup/
+
+# Other
+scripts/execution.sh

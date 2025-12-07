@@ -104,13 +104,15 @@ def main(
 
 if __name__ == "__main__":
 
-    runtime = get_runtime(title="medium_nitpicking")
+    runtime = get_runtime(
+        title="medium_nitpicking", override="20251207_024943_medium_nitpicking"
+    )
 
     adapter_list: list[BaseDetectionAdapter] = [
         # YoloUltralyticsAdapter(verbose=True),
-        EfficientDetAdapter(verbose=True),
+        # EfficientDetAdapter(verbose=True),
         RtdetrUltralyticsAdapter(verbose=True),
-        # FasterRcnnAdapter(verbose=True),
+        # FasterRcnnAdapter(verbose=True, augmentation_noise=False, augmentation_flip=False),
     ]
 
     # NOTE: defult params are setup here
