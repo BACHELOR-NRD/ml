@@ -114,7 +114,7 @@ def augumentation_analysis():
         metadata=AUG_BASE_PARAMS,
     )
 
-    EPOCHS_TO_TEST = [10, 20, 30]
+    EPOCHS_TO_TEST = [30]
 
     logger.info("Starting cross-validation for models augmentations comparisons")
     for epoch_count in EPOCHS_TO_TEST:
@@ -173,7 +173,7 @@ def aug_expo():
     logger.info(RESULTS_DIR)
     params = {
         "imgsz": 386,
-        "epochs": 60,
+        "epochs": 40,
         "batch": 16,
         "nbs": 64,
     }
@@ -335,5 +335,6 @@ if __name__ == "__main__":
     # evaluate_ensemble()
     # debug_ensemble_checkpoint_cpu()
     # augumentation_analysis()
-    aug_fasterrcnn()
+    # aug_fasterrcnn()
     aug_expo()
+    augumentation_analysis()
