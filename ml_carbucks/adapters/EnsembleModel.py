@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Tuple, Literal, Optional, Type, override
+from typing import Any, Dict, List, Tuple, Literal, Optional, Type, override
 
 import numpy as np
 import pickle as pkl
@@ -63,6 +63,9 @@ class EnsembleModel(BaseDetectionAdapter):
     img_size: int = -1
     epochs: int = -1
     weights: str = "N/A"
+
+    # --- METADATA ---
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     # --- MAIN METHODS ---
 

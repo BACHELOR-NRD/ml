@@ -95,6 +95,12 @@ def main(
             skip_trainings=skip_trainings,
         )
     )
+    train_folds_stringified = [
+        [str(dataset[0]), str(dataset[1])] for fold in train_folds for dataset in fold
+    ]
+    val_folds_stringified = [
+        [str(dataset[0]), str(dataset[1])] for fold in val_folds for dataset in fold
+    ]
 
     result = execute_simple_study(
         hyper_name=runtime,
@@ -113,16 +119,8 @@ def main(
         metadata={
             "runtime": runtime,
             "param_wrapper_version": param_wrapper_version,
-            "train_folds": [
-                [str(dataset[0]), str(dataset[1])]
-                for fold in train_folds
-                for dataset in fold
-            ],
-            "val_folds": [
-                [str(dataset[0]), str(dataset[1])]
-                for fold in val_folds
-                for dataset in fold
-            ],
+            "train_folds": train_folds_stringified,
+            "val_folds": val_folds_stringified,
             "skip_trainings": skip_trainings,
             **metadata,
         },
@@ -145,6 +143,10 @@ def main(
         final_datasets=final_datasets,
         results_dir=results_dir,
         skip_trainings=skip_trainings,
+        metadata={
+            **metadata,
+            **result,
+        },
     )
 
     sr = pd.Series(result)
@@ -160,25 +162,101 @@ if __name__ == "__main__":
         title="finalizing",
     )
 
-    adapters = load_adapters_from_hyperopt(
-        runtime, load_pattern="best_pickled_*_model.pkl"
-    )
+    # adapters = load_adapters_from_hyperopt(
+    #     runtime, load_pattern="best_pickled_*_model.pkl"
+    # )
 
     # NOTE: manual override for debugging
-    # adapters = [
-    #     YoloUltralyticsAdapter(
-    #         checkpoint=PRODUCTS_DIR / "best_pickled_YoloUltralyticsAdapter_model.pkl"
-    #     ),
-    #     RtdetrUltralyticsAdapter(
-    #         checkpoint=PRODUCTS_DIR / "best_pickled_RtdetrUltralyticsAdapter_model.pkl"
-    #     ),
-    #     FasterRcnnAdapter(
-    #         checkpoint=PRODUCTS_DIR / "best_pickled_FasterRcnnAdapter_model.pkl"
-    #     ),
-    #     EfficientDetAdapter(
-    #         checkpoint=PRODUCTS_DIR / "best_pickled_EfficientDetAdapter_model.pkl"
-    #     ),
-    # ]
+    adapters: list[BaseDetectionAdapter] = [
+        FasterRcnnAdapter(
+            **{
+                "img_size": 1024,
+                "epochs": 22,
+                "weights": "V2",
+                "checkpoint": None,
+                "verbose": True,
+                "label_mapper": None,
+                "lr_head": 0.0001051831567803569,
+                "weight_decay_head": 0.00012811643198592224,
+                "optimizer": "AdamW",
+                "clip_gradients": None,
+                "momentum": 0.9,
+                "strategy": "nms",
+                "batch_size": 4,
+                "accumulation_steps": 8,
+                "scheduler": None,
+                "n_classes": 3,
+                "training_augmentations": True,
+                "augmentation_noise": False,
+                "augmentation_flip": False,
+            }
+        ),
+        YoloUltralyticsAdapter(
+            **{
+                "img_size": 1024,
+                "epochs": 50,
+                "weights": "yolo11x.pt",
+                "checkpoint": None,
+                "verbose": True,
+                "label_mapper": None,
+                "optimizer": "Adam",
+                "lr": 0.0001209948413204914,
+                "momentum": 0.9346757287744887,
+                "weight_decay": 0.0010688292036922472,
+                "batch_size": 4,
+                "accumulation_steps": 16,
+                "scheduler": None,
+                "seed": 42,
+                "strategy": "nms",
+                "training_save": False,
+                "project_dir": None,
+                "name": None,
+                "training_augmentations": True,
+            },
+        ),
+        RtdetrUltralyticsAdapter(
+            **{
+                "img_size": 512,
+                "epochs": 15,
+                "weights": "rtdetr-l.pt",
+                "checkpoint": None,
+                "verbose": True,
+                "label_mapper": None,
+                "optimizer": "AdamW",
+                "lr": 0.00032294172263186796,
+                "momentum": 0.8118148318282641,
+                "weight_decay": 3.690747712271967e-05,
+                "batch_size": 32,
+                "accumulation_steps": 1,
+                "scheduler": None,
+                "seed": 42,
+                "strategy": "nms",
+                "training_save": False,
+                "project_dir": None,
+                "name": None,
+                "training_augmentations": True,
+            }
+        ),
+        EfficientDetAdapter(
+            **{
+                "img_size": 768,
+                "epochs": 35,
+                "weights": "tf_efficientdet_d3",
+                "checkpoint": None,
+                "verbose": True,
+                "optimizer": "momentum",
+                "lr": 0.0018726141643789745,
+                "weight_decay": 0.00015722062944500717,
+                "loader": "inbuilt",
+                "strategy": "nms",
+                "batch_size": 4,
+                "accumulation_steps": 4,
+                "scheduler": None,
+                "training_augmentations": True,
+                "n_classes": 3,
+            }
+        ),
+    ]
 
     main(
         adapters=adapters,
@@ -193,8 +271,8 @@ if __name__ == "__main__":
         # NOTE: default n_startup_trials is 10
         sampler=optuna.samplers.TPESampler(n_startup_trials=60),
         # NOTE: this should be folds not standard datasets, current setup is only for quick debugging
-        train_folds=DatasetsPathManager.CARBUCKS_TRAIN_CV[:2],
-        val_folds=DatasetsPathManager.CARBUCKS_VAL_CV[:2],
+        train_folds=DatasetsPathManager.CARBUCKS_TRAIN_CV[:3],
+        val_folds=DatasetsPathManager.CARBUCKS_VAL_CV[:3],
         final_datasets=DatasetsPathManager.CARBUCKS_TRAIN_ALL,
         # NOTE: skip trainings for quick debugging only
         skip_trainings=False,
