@@ -63,7 +63,7 @@ class DatasetsPathManager:
                 / "final_carbucks"
                 / "crossval"
                 / f"fold_{i}"
-                / "annotations_train.json",
+                / "instances_train_curated.json",
             )
         ]
         for i in range(1, 6)
@@ -83,7 +83,7 @@ class DatasetsPathManager:
                 / "final_carbucks"
                 / "crossval"
                 / f"fold_{i}"
-                / "annotations_val.json",
+                / "instances_val_curated.json",
             )
         ]
         for i in range(1, 6)
