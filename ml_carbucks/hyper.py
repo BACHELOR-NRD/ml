@@ -111,8 +111,10 @@ if __name__ == "__main__":
     adapter_list: list[BaseDetectionAdapter] = [
         # YoloUltralyticsAdapter(verbose=True),
         # EfficientDetAdapter(verbose=True),
-        RtdetrUltralyticsAdapter(verbose=True),
-        # FasterRcnnAdapter(verbose=True, augmentation_noise=False, augmentation_flip=False),
+        # RtdetrUltralyticsAdapter(verbose=True),
+        FasterRcnnAdapter(
+            verbose=True, augmentation_noise=False, augmentation_flip=False
+        ),
     ]
 
     # NOTE: defult params are setup here
