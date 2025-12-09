@@ -268,11 +268,14 @@ def create_ensemble(
     results_dir: Path,
     final_datasets: ADAPTER_DATASETS | None = None,
     skip_trainings: bool = False,
+    metadata: Dict[str, Any] | None = None,
 ) -> EnsembleModel:
     """
     A function that creates and fits an EnsembleModel from given adapters and parameters.
     The idea is to create a final ensemble model that would be production ready.
     """
+    if metadata is None:
+        metadata = {}
 
     if not skip_trainings:
         ensemble_adapters = [adapter.clone() for adapter in adapters]
@@ -286,6 +289,7 @@ def create_ensemble(
         **ensemble_params,
         adapters=ensemble_adapters,
         distributions=distributions,
+        metadata=metadata,
     )
     if final_datasets is None:
         logger.warning(
