@@ -159,7 +159,7 @@ def main(
 if __name__ == "__main__":
 
     runtime = get_runtime(
-        title="finalizing",
+        title="simple_finalizing",
     )
 
     # adapters = load_adapters_from_hyperopt(
@@ -271,8 +271,8 @@ if __name__ == "__main__":
         # NOTE: default n_startup_trials is 10
         sampler=optuna.samplers.TPESampler(n_startup_trials=60),
         # NOTE: this should be folds not standard datasets, current setup is only for quick debugging
-        train_folds=DatasetsPathManager.CARBUCKS_TRAIN_CV[:3],
-        val_folds=DatasetsPathManager.CARBUCKS_VAL_CV[:3],
+        train_folds=DatasetsPathManager.CARBUCKS_TRAIN_CV[:1],
+        val_folds=DatasetsPathManager.CARBUCKS_VAL_CV[:1],
         final_datasets=DatasetsPathManager.CARBUCKS_TRAIN_ALL,
         # NOTE: skip trainings for quick debugging only
         skip_trainings=False,
