@@ -45,6 +45,23 @@ class UltralyticsAdapter(BaseDetectionAdapter):
     accumulation_steps: int = 4
     scheduler: Optional[Literal["cosine"]] = None
 
+    # --- AUGMENTATION PARAMETERS ---
+    hsv_h: float = 0.015
+    hsv_s: float = 0.7
+    hsv_v: float = 0.4
+    degrees: float = 0.0
+    translate: float = 0.1
+    scale: float = 0.5
+    shear: float = 0.0
+    perspective: float = 0.0
+    flipud: float = 0.0
+    fliplr: float = 0.5
+    bgr: float = 0.0
+    mosaic: float = 1.0
+    mixup: float = 0.0
+    cutmix: float = 0.0
+    erasing: float = 0.4
+
     # --- SETUP PARAMETERS ---
 
     seed: int = 42
@@ -73,30 +90,7 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         data_yaml = convert_coco_to_yolo(str(img_dir), str(ann_file))
         logger.info(f"YOLO dataset YAML created at: {data_yaml}")
 
-        extra_params = dict()
-        if not self.training_augmentations:
-            logger.warning(
-                "Data augmentations are disabled. This may worsen model performance. It should only be used for debugging purposes."
-            )
-            extra_params.update(
-                {
-                    "hsv_h": 0.0,
-                    "hsv_s": 0.0,
-                    "hsv_v": 0.0,
-                    "translate": 0.0,
-                    "scale": 0.0,
-                    "shear": 0.0,
-                    "perspective": 0.0,
-                    "flipud": False,
-                    "fliplr": 0.0,
-                    "mosaic": 0.0,
-                    "mixup": 0.0,
-                    "erasing": 0.0,
-                    "auto_augment": None,
-                    "augment": False,
-                }
-            )
-
+        aug_params = self._get_augmentation_params()
         # NOTE: Saving results will be handled incorrectly (weird) if there is no val=True,
         # this is beacuse validation will be skipped and thus no results logged.
         self.model.train(  # type: ignore
@@ -118,7 +112,8 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             optimizer=self.optimizer,
             nbs=self.batch_size * self.accumulation_steps,
             cos_lr=self.scheduler == "cosine",
-            **extra_params,
+            # --- Augmentation parameters ---
+            **aug_params,
         )
 
         return self
@@ -183,30 +178,8 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             str(img_dir), str(ann_file), str(val_img_dir), str(val_ann_file)
         )
         logger.info(f"YOLO dataset YAML created at: {data_yaml}")
-        extra_params = dict()
-        if not self.training_augmentations:
-            logger.warning(
-                "Data augmentations are disabled. This may worsen model performance. It should only be used for debugging purposes."
-            )
-            extra_params.update(
-                {
-                    "hsv_h": 0.0,
-                    "hsv_s": 0.0,
-                    "hsv_v": 0.0,
-                    "translate": 0.0,
-                    "scale": 0.0,
-                    "shear": 0.0,
-                    "perspective": 0.0,
-                    "flipud": False,
-                    "fliplr": 0.0,
-                    "mosaic": 0.0,
-                    "mixup": 0.0,
-                    "erasing": 0.0,
-                    "auto_augment": None,
-                    "augment": False,
-                }
-            )
 
+        aug_params = self._get_augmentation_params()
         tres = self.model.train(  # type: ignore # noqa F841
             # --- Core parameters ---
             data=data_yaml,
@@ -226,7 +199,8 @@ class UltralyticsAdapter(BaseDetectionAdapter):
             optimizer=self.optimizer,
             nbs=self.batch_size * self.accumulation_steps,
             cos_lr=self.scheduler == "cosine",
-            **extra_params,
+            # --- Augmentation parameters ---
+            **aug_params,
         )
 
         results = self.model.val(
@@ -311,6 +285,45 @@ class UltralyticsAdapter(BaseDetectionAdapter):
         torch.save(obj["model"], temp_weights_path)
         self.model = model_class(str(temp_weights_path))
         os.remove(temp_weights_path)
+
+    def _get_augmentation_params(self) -> dict:
+        if not self.training_augmentations:
+            logger.warning(
+                "Data augmentations are disabled. This may worsen model performance."
+            )
+            aug_params = {
+                "hsv_h": 0.0,
+                "hsv_s": 0.0,
+                "hsv_v": 0.0,
+                "translate": 0.0,
+                "scale": 0.0,
+                "shear": 0.0,
+                "perspective": 0.0,
+                "flipud": False,
+                "fliplr": 0.0,
+                "mosaic": 0.0,
+                "mixup": 0.0,
+                "erasing": 0.0,
+            }
+        else:
+            aug_params = {
+                "hsv_h": self.hsv_h,
+                "hsv_s": self.hsv_s,
+                "hsv_v": self.hsv_v,
+                "degrees": self.degrees,
+                "translate": self.translate,
+                "scale": self.scale,
+                "shear": self.shear,
+                "perspective": self.perspective,
+                "flipud": self.flipud,
+                "fliplr": self.fliplr,
+                "bgr": self.bgr,
+                "mosaic": self.mosaic,
+                "mixup": self.mixup,
+                "cutmix": self.cutmix,
+                "erasing": self.erasing,
+            }
+        return aug_params
 
 
 @dataclass
