@@ -286,7 +286,6 @@ def analysis_3_augmentation_modes():
                     val_fold=val,
                     results_path=analysis_debug_path,
                     results_name=f"fold_{fold_idx}_{model_cls.__name__}_{aug_name}_",
-                    **aug_params,
                 )[METRIC],
             )
 
@@ -344,8 +343,8 @@ def analysis_6_strategies_comparison():
 
 
 def main():
-    analysis_1_dataset_manipulations()
-    analysis_2_augmentation_comparison()
+    # analysis_1_dataset_manipulations()
+    # analysis_2_augmentation_comparison()
     analysis_3_augmentation_modes()
     analysis_4_one_class_only_dataset()
 
