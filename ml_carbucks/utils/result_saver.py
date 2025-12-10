@@ -25,8 +25,8 @@ class ResultSaver:
 
         self.data.append(
             {
-                **kwargs,
                 **self.metadata,
+                **kwargs,
             }
         )
         pd.DataFrame(self.data).to_csv(

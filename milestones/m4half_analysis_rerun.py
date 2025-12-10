@@ -25,7 +25,7 @@ ANALYSIS_DIR = RESULTS_DIR / "m4half_analysis_rerun"
 ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
 
 BASE_PARAMS = {
-    "epochs": 10,
+    # "epochs": 10,
     "batch_size": 16,
     "accumulation_steps": 4,
     "img_size": 320,
@@ -79,106 +79,122 @@ def analysis_1_dataset_manipulations():
         FasterRcnnAdapter,
         EfficientDetAdapter,
     ]
-    for fold_idx, (train, val) in enumerate(zip(TRAIN_FOLDS, VAL_FOLDS, strict=True)):
+    custom_epochs = [10, 20]
+    for custom_epoch in custom_epochs:
+        for fold_idx, (train, val) in enumerate(
+            zip(TRAIN_FOLDS, VAL_FOLDS, strict=True)
+        ):
+            fold_cnt = fold_idx + 1
+            # fmt: off
+            cleaned_train = [(
+                str(train[0][0]).replace(f"fold_{fold_cnt}", f"fold_{fold_cnt}_cleaned"),
+                str(train[0][1]).replace(f"fold_{fold_cnt}", f"fold_{fold_cnt}_cleaned")
+            )]
+            balanced_train = [(
+                str(train[0][0]).replace(f"fold_{fold_cnt}", f"fold_{fold_cnt}_balanced"),
+                str(train[0][1]).replace(f"fold_{fold_cnt}", f"fold_{fold_cnt}_balanced")
+            )]
+            # fmt: on
 
-        # fmt: off
-        cleaned_train = [(
-            str(train[0][0]).replace(f"fold_{fold_idx}", f"fold_{fold_idx}_cleaned"),
-            str(train[0][1]).replace(f"fold_{fold_idx}", f"fold_{fold_idx}_cleaned")
-        )]
-        balanced_train = [(
-            str(train[0][0]).replace(f"fold_{fold_idx}", f"fold_{fold_idx}_balanced"),
-            str(train[0][1]).replace(f"fold_{fold_idx}", f"fold_{fold_idx}_balanced")
-        )]
-        # fmt: on
+            for model_cls in singular_models_cls:
 
-        for model_cls in singular_models_cls:
+                saver.save(
+                    model_name=model_cls.__name__,
+                    manipulation="carbucks_standard",
+                    fold=fold_cnt,
+                    epochs=custom_epoch,
+                    value=execute_model(
+                        model_cls,
+                        params={**BASE_PARAMS, "epochs": custom_epoch},
+                        train_fold=train,
+                        val_fold=val,
+                        results_path=analysis_debug_path,
+                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_carbucks_standard_",
+                    )[METRIC],
+                )
 
-            saver.save(
-                model_name=model_cls.__name__,
-                manipulation="carbucks_standard",
-                fold=fold_idx,
-                value=execute_model(
-                    model_cls,
-                    params=BASE_PARAMS,
-                    train_fold=train,
-                    val_fold=val,
-                    results_path=analysis_debug_path,
-                    results_name=f"fold_{fold_idx}_{model_cls.__name__}_carbucks_standard_",
-                )[METRIC],
-            )
+                saver.save(
+                    model_name=model_cls.__name__,
+                    manipulation="carbucks_cleaned",
+                    fold=fold_cnt,
+                    epochs=custom_epoch,
+                    value=execute_model(
+                        model_cls,
+                        params={**BASE_PARAMS, "epochs": custom_epoch},
+                        train_fold=cleaned_train,
+                        val_fold=val,
+                        results_path=analysis_debug_path,
+                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_carbucks_cleaned_",
+                    )[METRIC],
+                )
 
-            saver.save(
-                model_name=model_cls.__name__,
-                manipulation="carbucks_cleaned",
-                fold=fold_idx,
-                value=execute_model(
-                    model_cls,
-                    params=BASE_PARAMS,
-                    train_fold=cleaned_train,
-                    val_fold=val,
-                    results_path=analysis_debug_path,
-                    results_name=f"fold_{fold_idx}_{model_cls.__name__}_carbucks_cleaned_",
-                )[METRIC],
-            )
+                saver.save(
+                    model_name=model_cls.__name__,
+                    manipulation="carbucks_balanced",
+                    fold=fold_cnt,
+                    epochs=custom_epoch,
+                    value=execute_model(
+                        model_cls,
+                        params={**BASE_PARAMS, "epochs": custom_epoch},
+                        train_fold=balanced_train,
+                        val_fold=val,
+                        results_path=analysis_debug_path,
+                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_carbucks_balanced_",
+                    )[METRIC],
+                )
 
-            saver.save(
-                model_name=model_cls.__name__,
-                manipulation="carbucks_balanced",
-                fold=fold_idx,
-                value=execute_model(
-                    model_cls,
-                    params=BASE_PARAMS,
-                    train_fold=balanced_train,
-                    val_fold=val,
-                    results_path=analysis_debug_path,
-                    results_name=f"fold_{fold_idx}_{model_cls.__name__}_carbucks_balanced_",
-                )[METRIC],
-            )
+            for model_cls in combined_models_cls:
 
-        for model_cls in combined_models_cls:
+                saver.save(
+                    model_name=model_cls.__name__,
+                    manipulation="cardd_plus_carbucks_standard",
+                    fold=fold_cnt,
+                    epochs=custom_epoch,
+                    value=execute_model(
+                        model_cls,
+                        params={**BASE_PARAMS, "epochs": custom_epoch},
+                        train_fold=[DatasetsPathManager.CARDD_TRAIN[0], train[0]],
+                        val_fold=val,
+                        results_path=analysis_debug_path,
+                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_cardd_plus_carbucks_standard_",
+                    )[METRIC],
+                )
 
-            saver.save(
-                model_name=model_cls.__name__,
-                manipulation="cardd_plus_carbucks_standard",
-                fold=fold_idx,
-                value=execute_model(
-                    model_cls,
-                    params=BASE_PARAMS,
-                    train_fold=[DatasetsPathManager.CARDD_TRAIN[0], train[0]],
-                    val_fold=val,
-                    results_path=analysis_debug_path,
-                    results_name=f"fold_{fold_idx}_{model_cls.__name__}_cardd_plus_carbucks_standard_",
-                )[METRIC],
-            )
+                saver.save(
+                    model_name=model_cls.__name__,
+                    manipulation="cardd_plus_carbucks_cleaned",
+                    fold=fold_cnt,
+                    epochs=custom_epoch,
+                    value=execute_model(
+                        model_cls,
+                        params={**BASE_PARAMS, "epochs": custom_epoch},
+                        train_fold=[
+                            DatasetsPathManager.CARDD_TRAIN[0],
+                            cleaned_train[0],
+                        ],
+                        val_fold=val,
+                        results_path=analysis_debug_path,
+                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_cardd_plus_carbucks_cleaned_",
+                    )[METRIC],
+                )
 
-            saver.save(
-                model_name=model_cls.__name__,
-                manipulation="cardd_plus_carbucks_cleaned",
-                fold=fold_idx,
-                value=execute_model(
-                    model_cls,
-                    params=BASE_PARAMS,
-                    train_fold=[DatasetsPathManager.CARDD_TRAIN[0], cleaned_train[0]],
-                    val_fold=val,
-                    results_path=analysis_debug_path,
-                    results_name=f"fold_{fold_idx}_{model_cls.__name__}_cardd_plus_carbucks_cleaned_",
-                )[METRIC],
-            )
-
-            saver.save(
-                model_name=model_cls.__name__,
-                manipulation="cardd_plus_carbucks_balanced",
-                fold=fold_idx,
-                value=execute_model(
-                    model_cls,
-                    params=BASE_PARAMS,
-                    train_fold=[DatasetsPathManager.CARDD_TRAIN[0], balanced_train[0]],
-                    val_fold=val,
-                    results_path=analysis_debug_path,
-                    results_name=f"fold_{fold_idx}_{model_cls.__name__}_cardd_plus_carbucks_balanced_",
-                )[METRIC],
-            )
+                saver.save(
+                    model_name=model_cls.__name__,
+                    manipulation="cardd_plus_carbucks_balanced",
+                    fold=fold_cnt,
+                    epochs=custom_epoch,
+                    value=execute_model(
+                        model_cls,
+                        params={**BASE_PARAMS, "epochs": custom_epoch},
+                        train_fold=[
+                            DatasetsPathManager.CARDD_TRAIN[0],
+                            balanced_train[0],
+                        ],
+                        val_fold=val,
+                        results_path=analysis_debug_path,
+                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_cardd_plus_carbucks_balanced_",
+                    )[METRIC],
+                )
 
 
 def analysis_2_augmentation_comparison():
@@ -202,36 +218,51 @@ def analysis_2_augmentation_comparison():
         EfficientDetAdapterCustomLoader,
     ]
 
-    for fold_idx, (train, val) in enumerate(zip(TRAIN_FOLDS, VAL_FOLDS, strict=True)):
-        for model_cls in models_cls:
+    custom_epochs = [10, 20]
+    for custom_epoch in custom_epochs:
+        for fold_idx, (train, val) in enumerate(
+            zip(TRAIN_FOLDS, VAL_FOLDS, strict=True)
+        ):
+            fold_cnt = fold_idx + 1
+            for model_cls in models_cls:
 
-            saver.save(
-                model_name=model_cls.__name__,
-                augmentation=True,
-                fold=fold_idx,
-                value=execute_model(
-                    model_cls,
-                    params={**BASE_PARAMS, "training_augmentations": True},
-                    train_fold=train,
-                    val_fold=val,
-                    results_path=analysis_debug_path,
-                    results_name=f"fold_{fold_idx}_{model_cls.__name__}_aug_",
-                )[METRIC],
-            )
+                saver.save(
+                    model_name=model_cls.__name__,
+                    augmentation=True,
+                    fold=fold_cnt,
+                    epochs=custom_epoch,
+                    value=execute_model(
+                        model_cls,
+                        params={
+                            **BASE_PARAMS,
+                            "training_augmentations": True,
+                            "epochs": custom_epoch,
+                        },
+                        train_fold=train,
+                        val_fold=val,
+                        results_path=analysis_debug_path,
+                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_aug_",
+                    )[METRIC],
+                )
 
-            saver.save(
-                model_name=model_cls.__name__,
-                augmentation=False,
-                fold=fold_idx,
-                value=execute_model(
-                    model_cls,
-                    params={**BASE_PARAMS, "training_augmentations": False},
-                    train_fold=train,
-                    val_fold=val,
-                    results_path=analysis_debug_path,
-                    results_name=f"fold_{fold_idx}_{model_cls.__name__}_noaug_",
-                )[METRIC],
-            )
+                saver.save(
+                    model_name=model_cls.__name__,
+                    augmentation=False,
+                    fold=fold_cnt,
+                    epochs=custom_epoch,
+                    value=execute_model(
+                        model_cls,
+                        params={
+                            **BASE_PARAMS,
+                            "training_augmentations": False,
+                            "epochs": custom_epoch,
+                        },
+                        train_fold=train,
+                        val_fold=val,
+                        results_path=analysis_debug_path,
+                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_noaug_",
+                    )[METRIC],
+                )
 
 
 def analysis_3_augmentation_modes():
@@ -272,22 +303,28 @@ def analysis_3_augmentation_modes():
         (YoloUltralyticsAdapter, "noise", {**ultralytics_empty_augs, "bgr": 0.05, "mixup": 0.5, "cutmix": 0.5, "erasing": 0.1}),
     ]
     # fmt: on
-    for fold_idx, (train, val) in enumerate(zip(TRAIN_FOLDS, VAL_FOLDS, strict=True)):
-        for model_cls, aug_name, aug_params in models_cls_and_augs:
+    custom_epochs = [10, 20]
+    for custom_epoch in custom_epochs:
+        for fold_idx, (train, val) in enumerate(
+            zip(TRAIN_FOLDS, VAL_FOLDS, strict=True)
+        ):
+            fold_cnt = fold_idx + 1
+            for model_cls, aug_name, aug_params in models_cls_and_augs:
 
-            saver.save(
-                model_name=model_cls.__name__,
-                augmentation_mode=aug_name,
-                fold=fold_idx,
-                value=execute_model(
-                    model_cls,
-                    params={**BASE_PARAMS, **aug_params},
-                    train_fold=train,
-                    val_fold=val,
-                    results_path=analysis_debug_path,
-                    results_name=f"fold_{fold_idx}_{model_cls.__name__}_{aug_name}_",
-                )[METRIC],
-            )
+                saver.save(
+                    model_name=model_cls.__name__,
+                    augmentation_mode=aug_name,
+                    fold=fold_cnt,
+                    epochs=custom_epoch,
+                    value=execute_model(
+                        model_cls,
+                        params={**BASE_PARAMS, **aug_params, "epochs": custom_epoch},
+                        train_fold=train,
+                        val_fold=val,
+                        results_path=analysis_debug_path,
+                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_{aug_name}_",
+                    )[METRIC],
+                )
 
 
 def analysis_4_one_class_only_dataset():
@@ -305,33 +342,38 @@ def analysis_4_one_class_only_dataset():
         FasterRcnnAdapter,
         EfficientDetAdapter,
     ]
+    custom_epochs = [10, 20]
+    for custom_epoch in custom_epochs:
+        for fold_idx, (train, val) in enumerate(
+            zip(TRAIN_FOLDS, VAL_FOLDS, strict=True)
+        ):
+            fold_cnt = fold_idx + 1
+            for model_cls in models_cls:
 
-    for fold_idx, (train, val) in enumerate(zip(TRAIN_FOLDS, VAL_FOLDS, strict=True)):
-        for model_cls in models_cls:
+                # fmt: off
+                train_one_class = [(
+                    str(train[0][0]).replace(f"fold_{fold_cnt}", f"fold_{fold_cnt}_crack"),
+                    str(train[0][1]).replace(f"fold_{fold_cnt}", f"fold_{fold_cnt}_crack")
+                )]
+                val_one_class = [(
+                    str(val[0][0]).replace(f"fold_{fold_cnt}", f"fold_{fold_cnt}_crack"),
+                    str(val[0][1]).replace(f"fold_{fold_cnt}", f"fold_{fold_cnt}_crack")
+                )]
+                # fmt: on
 
-            # fmt: off
-            train_one_class = [(
-                str(train[0][0]).replace(f"fold_{fold_idx}", f"fold_{fold_idx}_crack"),
-                str(train[0][1]).replace(f"fold_{fold_idx}", f"fold_{fold_idx}_crack")
-            )]
-            val_one_class = [(
-                str(val[0][0]).replace(f"fold_{fold_idx}", f"fold_{fold_idx}_crack"),
-                str(val[0][1]).replace(f"fold_{fold_idx}", f"fold_{fold_idx}_crack")
-            )]
-            # fmt: on
-
-            saver.save(
-                model_name=model_cls.__name__,
-                fold=fold_idx,
-                value=execute_model(
-                    model_cls,
-                    params=BASE_PARAMS,
-                    train_fold=train_one_class,
-                    val_fold=val_one_class,
-                    results_path=analysis_debug_path,
-                    results_name=f"fold_{fold_idx}_{model_cls.__name__}_one_class_only_",
-                )[METRIC],
-            )
+                saver.save(
+                    model_name=model_cls.__name__,
+                    fold=fold_cnt,
+                    epochs=custom_epoch,
+                    value=execute_model(
+                        model_cls,
+                        params={**BASE_PARAMS, "epochs": custom_epoch},
+                        train_fold=train_one_class,
+                        val_fold=val_one_class,
+                        results_path=analysis_debug_path,
+                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_one_class_only_",
+                    )[METRIC],
+                )
 
 
 def analysis_5_score_distributions():
