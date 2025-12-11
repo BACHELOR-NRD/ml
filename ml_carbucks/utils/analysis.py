@@ -9,6 +9,8 @@ def plot_analysis_stats_std(
     target_col: str,
     category_col: str,
     value_col: str = "value",
+    value_name: str = "mAP50",
+    per_category_subtitle_col: str | None = None,
     title="Analysis X",
 ):
     df = df.copy().reset_index()
@@ -76,6 +78,21 @@ def plot_analysis_stats_std(
         label="Average",
     )
 
+    if per_category_subtitle_col is not None:
+        avg_subtitle_val = df.groupby(target_col)[per_category_subtitle_col].mean()
+        # annotate each bar with the subtitle value at the bottom of that invidual bar
+        for j, pos in enumerate(avg_x):
+            ax.text(
+                avg_x[j],
+                0.001,
+                f"{per_category_subtitle_col}:{int(avg_subtitle_val[j])}",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                color="black",
+                rotation=0,
+            )
+
     # Custom legend for STD bars (vertical bar only)
     std_legend = Line2D([0], [0], color="gray", lw=2, label="STD across folds")
 
@@ -84,13 +101,14 @@ def plot_analysis_stats_std(
     handles.append(std_legend)
     labels.append("STD across folds")
     ax.legend(
-        handles=handles, labels=labels, frameon=True, framealpha=0.9, loc="upper center"
+        handles=handles, labels=labels, frameon=True, framealpha=0.9, loc="upper left"
     )
 
     # Labels and formatting
+    ax.set_yticks(np.arange(0, max(avg_vals) * 2, 0.01))
     ax.set_xticks(avg_x)
     ax.set_xticklabels(manipulations, rotation=45, ha="right")
-    ax.set_ylabel("mAP50")
+    ax.set_ylabel(value_name)
     ax.set_xlabel(target_col.capitalize())
     ax.set_title(title)
     plt.tight_layout()
