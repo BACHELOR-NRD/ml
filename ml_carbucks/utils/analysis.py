@@ -91,7 +91,7 @@ def plot_analysis_stats_std(
     ax.set_xticks(avg_x)
     ax.set_xticklabels(manipulations, rotation=45, ha="right")
     ax.set_ylabel("mAP50")
-    ax.set_xlabel(f"{category_col} Type")
+    ax.set_xlabel(target_col.capitalize())
     ax.set_title(title)
     plt.tight_layout()
     plt.show()
