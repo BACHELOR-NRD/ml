@@ -79,7 +79,7 @@ def analysis_1_dataset_manipulations():
         FasterRcnnAdapter,
         EfficientDetAdapter,
     ]
-    custom_epochs = [10, 20]
+    custom_epochs = [60]
     for custom_epoch in custom_epochs:
         for fold_idx, (train, val) in enumerate(
             zip(TRAIN_FOLDS, VAL_FOLDS, strict=True)
@@ -98,35 +98,35 @@ def analysis_1_dataset_manipulations():
 
             for model_cls in singular_models_cls:
 
-                saver.save(
-                    model_name=model_cls.__name__,
-                    manipulation="carbucks_standard",
-                    fold=fold_cnt,
-                    epochs=custom_epoch,
-                    value=execute_model(
-                        model_cls,
-                        params={**BASE_PARAMS, "epochs": custom_epoch},
-                        train_fold=train,
-                        val_fold=val,
-                        results_path=analysis_debug_path,
-                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_carbucks_standard_",
-                    )[METRIC],
-                )
+                # saver.save(
+                #     model_name=model_cls.__name__,
+                #     manipulation="carbucks_standard",
+                #     fold=fold_cnt,
+                #     epochs=custom_epoch,
+                #     value=execute_model(
+                #         model_cls,
+                #         params={**BASE_PARAMS, "epochs": custom_epoch},
+                #         train_fold=train,
+                #         val_fold=val,
+                #         results_path=analysis_debug_path,
+                #         results_name=f"fold_{fold_cnt}_{model_cls.__name__}_carbucks_standard_",
+                #     )[METRIC],
+                # )
 
-                saver.save(
-                    model_name=model_cls.__name__,
-                    manipulation="carbucks_cleaned",
-                    fold=fold_cnt,
-                    epochs=custom_epoch,
-                    value=execute_model(
-                        model_cls,
-                        params={**BASE_PARAMS, "epochs": custom_epoch},
-                        train_fold=cleaned_train,
-                        val_fold=val,
-                        results_path=analysis_debug_path,
-                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_carbucks_cleaned_",
-                    )[METRIC],
-                )
+                # saver.save(
+                #     model_name=model_cls.__name__,
+                #     manipulation="carbucks_cleaned",
+                #     fold=fold_cnt,
+                #     epochs=custom_epoch,
+                #     value=execute_model(
+                #         model_cls,
+                #         params={**BASE_PARAMS, "epochs": custom_epoch},
+                #         train_fold=cleaned_train,
+                #         val_fold=val,
+                #         results_path=analysis_debug_path,
+                #         results_name=f"fold_{fold_cnt}_{model_cls.__name__}_carbucks_cleaned_",
+                #     )[METRIC],
+                # )
 
                 saver.save(
                     model_name=model_cls.__name__,
@@ -139,62 +139,62 @@ def analysis_1_dataset_manipulations():
                         train_fold=balanced_train,
                         val_fold=val,
                         results_path=analysis_debug_path,
-                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_carbucks_balanced_",
+                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_carbucks_balanced2_",
                     )[METRIC],
                 )
 
-            for model_cls in combined_models_cls:
+            # for model_cls in combined_models_cls:
 
-                saver.save(
-                    model_name=model_cls.__name__,
-                    manipulation="cardd_plus_carbucks_standard",
-                    fold=fold_cnt,
-                    epochs=custom_epoch,
-                    value=execute_model(
-                        model_cls,
-                        params={**BASE_PARAMS, "epochs": custom_epoch},
-                        train_fold=[DatasetsPathManager.CARDD_TRAIN[0], train[0]],
-                        val_fold=val,
-                        results_path=analysis_debug_path,
-                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_cardd_plus_carbucks_standard_",
-                    )[METRIC],
-                )
+            #     saver.save(
+            #         model_name=model_cls.__name__,
+            #         manipulation="cardd_plus_carbucks_standard",
+            #         fold=fold_cnt,
+            #         epochs=custom_epoch,
+            #         value=execute_model(
+            #             model_cls,
+            #             params={**BASE_PARAMS, "epochs": custom_epoch},
+            #             train_fold=[DatasetsPathManager.CARDD_TRAIN[0], train[0]],
+            #             val_fold=val,
+            #             results_path=analysis_debug_path,
+            #             results_name=f"fold_{fold_cnt}_{model_cls.__name__}_cardd_plus_carbucks_standard_",
+            #         )[METRIC],
+            #     )
 
-                saver.save(
-                    model_name=model_cls.__name__,
-                    manipulation="cardd_plus_carbucks_cleaned",
-                    fold=fold_cnt,
-                    epochs=custom_epoch,
-                    value=execute_model(
-                        model_cls,
-                        params={**BASE_PARAMS, "epochs": custom_epoch},
-                        train_fold=[
-                            DatasetsPathManager.CARDD_TRAIN[0],
-                            cleaned_train[0],
-                        ],
-                        val_fold=val,
-                        results_path=analysis_debug_path,
-                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_cardd_plus_carbucks_cleaned_",
-                    )[METRIC],
-                )
+            #     saver.save(
+            #         model_name=model_cls.__name__,
+            #         manipulation="cardd_plus_carbucks_cleaned",
+            #         fold=fold_cnt,
+            #         epochs=custom_epoch,
+            #         value=execute_model(
+            #             model_cls,
+            #             params={**BASE_PARAMS, "epochs": custom_epoch},
+            #             train_fold=[
+            #                 DatasetsPathManager.CARDD_TRAIN[0],
+            #                 cleaned_train[0],
+            #             ],
+            #             val_fold=val,
+            #             results_path=analysis_debug_path,
+            #             results_name=f"fold_{fold_cnt}_{model_cls.__name__}_cardd_plus_carbucks_cleaned_",
+            #         )[METRIC],
+            #     )
 
-                saver.save(
-                    model_name=model_cls.__name__,
-                    manipulation="cardd_plus_carbucks_balanced",
-                    fold=fold_cnt,
-                    epochs=custom_epoch,
-                    value=execute_model(
-                        model_cls,
-                        params={**BASE_PARAMS, "epochs": custom_epoch},
-                        train_fold=[
-                            DatasetsPathManager.CARDD_TRAIN[0],
-                            balanced_train[0],
-                        ],
-                        val_fold=val,
-                        results_path=analysis_debug_path,
-                        results_name=f"fold_{fold_cnt}_{model_cls.__name__}_cardd_plus_carbucks_balanced_",
-                    )[METRIC],
-                )
+            #     saver.save(
+            #         model_name=model_cls.__name__,
+            #         manipulation="cardd_plus_carbucks_balanced",
+            #         fold=fold_cnt,
+            #         epochs=custom_epoch,
+            #         value=execute_model(
+            #             model_cls,
+            #             params={**BASE_PARAMS, "epochs": custom_epoch},
+            #             train_fold=[
+            #                 DatasetsPathManager.CARDD_TRAIN[0],
+            #                 balanced_train[0],
+            #             ],
+            #             val_fold=val,
+            #             results_path=analysis_debug_path,
+            #             results_name=f"fold_{fold_cnt}_{model_cls.__name__}_cardd_plus_carbucks_balanced_",
+            #         )[METRIC],
+            #     )
 
 
 def analysis_2_augmentation_comparison():
@@ -218,7 +218,7 @@ def analysis_2_augmentation_comparison():
         EfficientDetAdapterCustomLoader,
     ]
 
-    custom_epochs = [10, 20]
+    custom_epochs = [20]
     for custom_epoch in custom_epochs:
         for fold_idx, (train, val) in enumerate(
             zip(TRAIN_FOLDS, VAL_FOLDS, strict=True)
@@ -303,7 +303,7 @@ def analysis_3_augmentation_modes():
         (YoloUltralyticsAdapter, "noise", {**ultralytics_empty_augs, "bgr": 0.05, "mixup": 0.5, "cutmix": 0.5, "erasing": 0.1}),
     ]
     # fmt: on
-    custom_epochs = [10, 20]
+    custom_epochs = [20]
     for custom_epoch in custom_epochs:
         for fold_idx, (train, val) in enumerate(
             zip(TRAIN_FOLDS, VAL_FOLDS, strict=True)
@@ -342,7 +342,7 @@ def analysis_4_one_class_only_dataset():
         FasterRcnnAdapter,
         EfficientDetAdapter,
     ]
-    custom_epochs = [10, 20]
+    custom_epochs = [20]
     for custom_epoch in custom_epochs:
         for fold_idx, (train, val) in enumerate(
             zip(TRAIN_FOLDS, VAL_FOLDS, strict=True)
@@ -385,8 +385,8 @@ def analysis_6_strategies_comparison():
 
 
 def main():
-    # analysis_1_dataset_manipulations()
-    # analysis_2_augmentation_comparison()
+    analysis_1_dataset_manipulations()
+    analysis_2_augmentation_comparison()
     analysis_3_augmentation_modes()
     analysis_4_one_class_only_dataset()
 

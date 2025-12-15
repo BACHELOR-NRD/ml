@@ -12,6 +12,7 @@ def plot_analysis_stats_std(
     value_name: str = "mAP50",
     per_category_subtitle_col: str | None = None,
     title="Analysis X",
+    color_map: str = "Set2",
 ):
     df = df.copy().reset_index()
 
@@ -33,7 +34,7 @@ def plot_analysis_stats_std(
     bar_width = 0.18
 
     fig, ax = plt.subplots(figsize=(14, 6))
-    cmap = plt.get_cmap("Set2")
+    cmap = plt.get_cmap(color_map)
     colors = [cmap(i) for i in range(len(models))]
 
     # Plot bars with vertical STD error bars
