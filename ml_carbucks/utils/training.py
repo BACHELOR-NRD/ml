@@ -2,6 +2,7 @@ from typing import Literal, Optional
 import torch
 from timm.scheduler.scheduler import Scheduler
 from timm.scheduler.cosine_lr import CosineLRScheduler
+from timm.scheduler.plateau_lr import PlateauLRScheduler
 
 from ml_carbucks.utils.logger import setup_logger
 
@@ -14,7 +15,7 @@ def create_scheduler(
     epochs: int,
     accumulation_steps: int,
     lr: float,
-    scheduler: Optional[Literal["cosine"]],
+    scheduler: Optional[Literal["cosine", "reduceonplateau"]],
 ) -> Optional[Scheduler]:
 
     if scheduler is None:
@@ -34,6 +35,13 @@ def create_scheduler(
             warmup_lr_init=lr * 0.1,  # type: ignore
             warmup_t=int(total_steps * 0.1),
             warmup_prefix=False,
+        )
+    elif scheduler == "reduceonplateau":
+        final_scheduler = PlateauLRScheduler(
+            optimizer,
+            mode="min",
+            decay_rate=0.5,
+            patience_t=4,
         )
     else:
         raise ValueError(f"Unknown scheduler type: {scheduler}")

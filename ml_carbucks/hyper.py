@@ -104,14 +104,12 @@ def main(
 
 if __name__ == "__main__":
 
-    runtime = get_runtime(
-        title="medium_nitpicking", override="20251207_024943_medium_nitpicking"
-    )
+    runtime = get_runtime(title="bigger_long")
 
     adapter_list: list[BaseDetectionAdapter] = [
-        # YoloUltralyticsAdapter(verbose=True),
-        # EfficientDetAdapter(verbose=True),
-        # RtdetrUltralyticsAdapter(verbose=True),
+        YoloUltralyticsAdapter(verbose=True),
+        EfficientDetAdapter(verbose=True),
+        RtdetrUltralyticsAdapter(verbose=True),
         FasterRcnnAdapter(
             verbose=True, augmentation_noise=False, augmentation_flip=False
         ),
@@ -123,11 +121,11 @@ if __name__ == "__main__":
         runtime=runtime,
         train_datasets=DatasetsPathManager.CARBUCKS_TRAIN_STANDARD,
         val_datasets=DatasetsPathManager.CARBUCKS_VAL_STANDARD,
-        param_wrapper_version="h3",  # NOTE: h2 will use bigger image sizes and epochs so it takes longer, h3 is a compromise
+        param_wrapper_version="h2",  # NOTE: h2 will use bigger image sizes and epochs so it takes longer, h3 is a compromise
         plot_with_debug=True,
         results_dir=OPTUNA_DIR,
         n_trials=30,
         patience=15,
         min_percentage_improvement=0.01,
-        optimization_timeout=12 * 3600,  # N hours
+        optimization_timeout=48 * 3600,  # N hours
     )

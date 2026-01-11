@@ -64,7 +64,7 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
     strategy: Literal["nms", "wbf"] = "nms"
     batch_size: int = 8
     accumulation_steps: int = 4
-    scheduler: Optional[Literal["cosine"]] = None
+    scheduler: Optional[Literal["cosine", "reduceonplateau"]] = None
     augmentation_affine: bool = True
     augmentation_flip: bool = True
     augmentation_crop: bool = True
@@ -157,14 +157,14 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
                 self._clip_gradients_wrapper()
                 optimizer.step()
                 optimizer.zero_grad()
-                if scheduler is not None:
+                if scheduler is not None and self.scheduler == "cosine":
                     scheduler.step_update(num_updates=(epoch - 1) * num_batches + cnt)
 
         if cnt % self.accumulation_steps != 0:
             self._clip_gradients_wrapper()
             optimizer.step()
             optimizer.zero_grad()
-            if scheduler is not None:
+            if scheduler is not None and self.scheduler == "cosine":
                 scheduler.step_update(num_updates=epoch * num_batches)
 
         return total_loss / num_batches
@@ -309,6 +309,9 @@ class FasterRcnnAdapter(BaseDetectionAdapter):
             logger.info(f"Debug Epoch {epoch}/{epochs}")
             total_loss = self.train_epoch(epoch, optimizer, scheduler, train_loader)
             val_metrics = self.evaluate(val_datasets)
+
+            if scheduler is not None and self.scheduler == "reduceonplateau":
+                scheduler.step(epoch=epoch, metric=val_metrics["map_50_95"])
             saver.save(
                 epoch=epoch,
                 loss=total_loss,
